@@ -2,70 +2,22 @@
 
 ## Table of Contents
 
-- [1. Current State Analysis](#1-current-state-analysis)
-- [2. Phase Dependency Map](#2-phase-dependency-map)
-- [3. Phase 0 — Project Foundation](#3-phase-0--project-foundation)
-- [4. Phase 1 — Configuration and Project Context](#4-phase-1--configuration-and-project-context)
-- [5. Phase 2 — Authentication and Credential Management](#5-phase-2--authentication-and-credential-management)
-- [6. Phase 3 — Telemetry and Logging](#6-phase-3--telemetry-and-logging)
-- [7. Phase 4 — LLM Client](#7-phase-4--llm-client)
-- [8. Phase 5 — Tool System](#8-phase-5--tool-system)
-- [9. Phase 6 — Sandbox and Approvals](#9-phase-6--sandbox-and-approvals)
-- [10. Phase 7 — Agent Core Runtime](#10-phase-7--agent-core-runtime)
-- [11. Phase 8 — CLI and Terminal UI](#11-phase-8--cli-and-terminal-ui)
-- [12. Phase 9 — MCP Integration and Production Readiness](#12-phase-9--mcp-integration-and-production-readiness)
-- [13. Future Extensions](#13-future-extensions)
+- [1. Phase Dependency Map](#1-phase-dependency-map)
+- [2. Phase 0 — Project Foundation](#2-phase-0--project-foundation)
+- [3. Phase 1 — Configuration and Project Context](#3-phase-1--configuration-and-project-context)
+- [4. Phase 2 — Authentication and Credential Management](#4-phase-2--authentication-and-credential-management)
+- [5. Phase 3 — Telemetry and Logging](#5-phase-3--telemetry-and-logging)
+- [6. Phase 4 — LLM Client](#6-phase-4--llm-client)
+- [7. Phase 5 — Tool System](#7-phase-5--tool-system)
+- [8. Phase 6 — Sandbox and Approvals](#8-phase-6--sandbox-and-approvals)
+- [9. Phase 7 — Agent Core Runtime](#9-phase-7--agent-core-runtime)
+- [10. Phase 8 — CLI and Terminal UI](#10-phase-8--cli-and-terminal-ui)
+- [11. Phase 9 — MCP Integration and Production Readiness](#11-phase-9--mcp-integration-and-production-readiness)
+- [12. Future Extensions](#12-future-extensions)
 
 ---
 
-## 1. Current State Analysis
-
-### What exists
-
-| Item | Path | Notes |
-|------|------|-------|
-| Agent coding rules | `AGENT.md` | Detailed coding standards, security, LLM rules |
-| Product description | `README.md` | Feature list, planned stack, UI mockups |
-| Architecture document | `documentation/core/architecture.md` | Package layout, component contracts, flows |
-| UI mockups (6 screens) | `documentation/ui/model/Terminal-*.png` | Interactive REPL, commands, quota, models, auth, roles |
-| Banner image | `public/Banner.png` | Repository branding |
-| Environment file | `.env` | API key, model, timeouts (git-ignored) |
-| Gitignore | `.gitignore` | Standard Python gitignore |
-| License | `LICENSE` | Apache License 2.0 |
-| Virtual environment | `.venv/` | Python 3.14 (system default), `google-genai` SDK already installed |
-
-### Python Target Version Policy
-
-The project officially targets **Python 3.11, 3.12, and 3.13** (`>=3.11, <3.14`).
-Although the local Linux `.venv` was initialized with Python 3.14, targeting
-`>=3.11, <3.14` guarantees stability across ecosystem dependencies, pre-built
-C-extensions, and package wheels. Python 3.14 is treated as experimental until
-its official general availability.
-
-- Primary recommended development version: **Python 3.12**
-- Supported runtime matrix: **3.11, 3.12, 3.13**
-- Pinned in `.python-version`: `3.12`
-
-### What does not exist
-
-- `pyproject.toml` — no package definition at all.
-- `src/` directory — no Python source code.
-- `tests/` directory — no test infrastructure.
-- `.env.example` — no safe credential template.
-- `GEMINI.md.example` — no project-context example.
-- CI/CD pipeline — no GitHub Actions workflow.
-- Any runnable entry point.
-
-### Pre-installed packages in `.venv`
-
-The virtual environment already contains `google-genai` and its transitive
-dependencies (`google-auth`, `httpx`, `pydantic`, `protobuf`, `websockets`,
-etc.). All new dependencies must be declared in `pyproject.toml` and managed
-through `uv`.
-
----
-
-## 2. Phase Dependency Map
+## 1. Phase Dependency Map
 
 ```mermaid
 flowchart TD
@@ -103,12 +55,12 @@ complete. Phase 7 is the convergence point where all lower layers meet.
 
 ---
 
-## 3. Phase 0 — Project Foundation
+## 2. Phase 0 — Project Foundation
 
 **Goal:** Create a valid, installable Python package with tooling so that
 `uv sync`, `python -m gemini_agent`, and `gemini-cli --version` succeed.
 
-### 3.1 Package definition — `pyproject.toml`
+### 2.1 Package definition — `pyproject.toml`
 
 Create `pyproject.toml` in the repository root with the following sections:
 
@@ -161,7 +113,7 @@ packages = ["src/gemini_agent"]
 - Development dependencies are separated into `[project.optional-dependencies]`.
 - The `gemini-cli` entry point maps to `gemini_agent.cli.app:main`.
 
-### 3.2 Source directory skeleton
+### 2.2 Source directory skeleton
 
 Create the following directory tree with minimal placeholder files. Every
 `__init__.py` should be empty or contain only the package docstring. The
@@ -301,7 +253,7 @@ def main() -> None:
     app()
 ```
 
-### 3.3 Test infrastructure
+### 2.3 Test infrastructure
 
 ```
 tests/
@@ -350,7 +302,7 @@ def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GEMINI_TELEMETRY_ENABLED", "false")
 ```
 
-### 3.4 Tooling configuration in `pyproject.toml`
+### 2.4 Tooling configuration in `pyproject.toml`
 
 Append these sections to `pyproject.toml`:
 
@@ -392,7 +344,7 @@ packages = ["gemini_agent"]
 mypy_path = "src"
 ```
 
-### 3.5 Credential template — `.env.example`
+### 2.5 Credential template — `.env.example`
 
 ```dotenv
 # Required. Create a key at https://aistudio.google.com/apikey
@@ -406,7 +358,7 @@ GEMINI_MAX_HISTORY_TURNS=20
 GEMINI_MAX_INPUT_CHARS=32000
 ```
 
-### 3.6 Project-context example — `GEMINI.md.example`
+### 2.6 Project-context example — `GEMINI.md.example`
 
 ```markdown
 # Project Instructions for Gemini CLI
@@ -422,7 +374,7 @@ security controls or approval requirements.
 - Prefer standard library solutions when possible.
 ```
 
-### 3.7 Pinned Python version — `.python-version`
+### 2.7 Pinned Python version — `.python-version`
 
 Create `.python-version` in the repository root to pin the local development
 and tooling standard:
@@ -431,7 +383,7 @@ and tooling standard:
 3.12
 ```
 
-### 3.8 CI pipeline — `.github/workflows/ci.yml`
+### 2.8 CI pipeline — `.github/workflows/ci.yml`
 
 ```yaml
 name: CI
@@ -463,7 +415,7 @@ jobs:
         run: uv run pytest --cov=gemini_agent --cov-report=term-missing
 ```
 
-### 3.9 Acceptance criteria
+### 2.9 Acceptance criteria
 
 - [ ] `.python-version` specifies `3.12`.
 - [ ] `uv sync` installs the package and all dependencies without errors.
@@ -479,7 +431,7 @@ jobs:
 
 ---
 
-## 4. Phase 1 — Configuration and Project Context
+## 3. Phase 1 — Configuration and Project Context
 
 **Goal:** Provide a single validated settings object that the rest of the
 application consumes, with predictable precedence and project-instruction
@@ -487,7 +439,7 @@ discovery.
 
 **Depends on:** Phase 0.
 
-### 4.1 Default values — `src/gemini_agent/config/defaults.py`
+### 3.1 Default values — `src/gemini_agent/config/defaults.py`
 
 Define all built-in defaults as typed constants:
 
@@ -540,7 +492,7 @@ GLOBAL_CONFIG_DIR_NAME: str = ".gemini-cli"
 PROJECT_CONFIG_FILE_NAME: str = ".gemini-cli.toml"
 ```
 
-### 4.2 Settings model — `src/gemini_agent/config/settings.py`
+### 3.2 Settings model — `src/gemini_agent/config/settings.py`
 
 Use Pydantic Settings to compose the final configuration object. The
 precedence is: environment variables > project config file > global config
@@ -638,7 +590,7 @@ class Settings(BaseSettings):
 - `allowed_roots` defaults to an empty list; the CLI layer populates it with
   the current working directory at startup.
 
-### 4.3 Project context discovery — `src/gemini_agent/config/project_context.py`
+### 3.3 Project context discovery — `src/gemini_agent/config/project_context.py`
 
 ```python
 """Discover and load project-level instruction files."""
@@ -698,7 +650,7 @@ def load_project_context(search_root: Path) -> ProjectContext:
     )
 ```
 
-### 4.4 Config `__init__.py` — public API
+### 3.4 Config `__init__.py` — public API
 
 ```python
 """Configuration package — public surface."""
@@ -709,7 +661,7 @@ from gemini_agent.config.settings import Settings
 __all__ = ["ProjectContext", "Settings", "load_project_context"]
 ```
 
-### 4.5 Tests — `tests/unit/config/`
+### 3.5 Tests — `tests/unit/config/`
 
 | Test file | What it validates |
 |-----------|-------------------|
@@ -717,7 +669,7 @@ __all__ = ["ProjectContext", "Settings", "load_project_context"]
 | `test_settings.py` | Settings are created from env vars, missing optional env vars fall back to defaults, invalid role raises `ValidationError`, `api_key` allows empty string, `request_timeout_ms` rejects zero and negative. |
 | `test_project_context.py` | Discovers `GEMINI.md` in the current directory, discovers `AGENTS.md` one level up, returns empty context when nothing found, handles unreadable files gracefully. |
 
-### 4.6 Acceptance criteria
+### 3.6 Acceptance criteria
 
 - [ ] `Settings()` can be constructed with no environment variables set (all
   defaults apply).
@@ -731,14 +683,14 @@ __all__ = ["ProjectContext", "Settings", "load_project_context"]
 
 ---
 
-## 5. Phase 2 — Authentication and Credential Management
+## 4. Phase 2 — Authentication and Credential Management
 
 **Goal:** Support API-key authentication with secure storage and provide a
 stub for future Google OAuth support.
 
 **Depends on:** Phase 1 (settings).
 
-### 5.1 API key provider — `src/gemini_agent/auth/api_key.py`
+### 4.1 API key provider — `src/gemini_agent/auth/api_key.py`
 
 ```python
 """API key resolution: environment → keyring → prompt."""
@@ -766,7 +718,7 @@ that checks, in order:
 2. System keyring via `keyring.get_password("gemini-cli", "api-key")`.
 3. Returns an error or raises `AuthenticationError` if nothing found.
 
-### 5.2 Credential store — `src/gemini_agent/auth/credentials_store.py`
+### 4.2 Credential store — `src/gemini_agent/auth/credentials_store.py`
 
 The credential store is the **only** component that interacts with persistent
 secret storage.
@@ -792,13 +744,13 @@ All functions must:
 - Catch `keyring.errors.KeyringError` and raise a domain-specific error.
 - Never log, print, or include the actual key value in error messages.
 
-### 5.3 OAuth stub — `src/gemini_agent/auth/oauth.py`
+### 4.3 OAuth stub — `src/gemini_agent/auth/oauth.py`
 
 Create a module with a single class `OAuthProvider` whose methods raise
 `NotImplementedError("Google OAuth is not yet supported.")`. This signals
 intent without adding dead code.
 
-### 5.4 Auth exceptions — `src/gemini_agent/auth/__init__.py`
+### 4.4 Auth exceptions — `src/gemini_agent/auth/__init__.py`
 
 ```python
 """Authentication package."""
@@ -812,14 +764,14 @@ class CredentialStoreError(Exception):
     """Raised when the OS keyring is unavailable or fails."""
 ```
 
-### 5.5 Tests — `tests/unit/auth/`
+### 4.5 Tests — `tests/unit/auth/`
 
 | Test file | What it validates |
 |-----------|-------------------|
 | `test_api_key.py` | Key resolved from settings, fallback to keyring mock, error when no key available. |
 | `test_credentials_store.py` | Store/load/delete round-trip with mocked keyring, graceful error when keyring unavailable. |
 
-### 5.6 Acceptance criteria
+### 4.6 Acceptance criteria
 
 - [ ] API key from `GEMINI_API_KEY` env var is resolved without touching keyring.
 - [ ] When env var is empty, keyring is queried.
@@ -830,14 +782,14 @@ class CredentialStoreError(Exception):
 
 ---
 
-## 6. Phase 3 — Telemetry and Logging
+## 5. Phase 3 — Telemetry and Logging
 
 **Goal:** Structured application logging with secret redaction and opt-in
 telemetry foundation.
 
 **Depends on:** Phase 0.
 
-### 6.1 Logger setup — `src/gemini_agent/telemetry/logger.py`
+### 5.1 Logger setup — `src/gemini_agent/telemetry/logger.py`
 
 Implement the following:
 
@@ -879,13 +831,13 @@ class ToolCallEvent:
 4. Telemetry events are logged at `DEBUG` level. When `telemetry_enabled` is
    `False`, the telemetry handler is not attached and events are discarded.
 
-### 6.2 Tests — `tests/unit/telemetry/`
+### 5.2 Tests — `tests/unit/telemetry/`
 
 | Test file | What it validates |
 |-----------|-------------------|
 | `test_logger.py` | `configure_logging` sets the correct level, redacting filter strips API keys from messages, telemetry events are suppressed when disabled, JSON output is valid. |
 
-### 6.3 Acceptance criteria
+### 5.3 Acceptance criteria
 
 - [ ] `configure_logging("DEBUG", False)` attaches console handler but not
   telemetry handler.
@@ -897,7 +849,7 @@ class ToolCallEvent:
 
 ---
 
-## 7. Phase 4 — LLM Client
+## 6. Phase 4 — LLM Client
 
 **Goal:** A Gemini client that wraps `google-genai`, handles model selection,
 retry, fallback, streaming, and prompt composition — all behind a narrow
@@ -905,7 +857,7 @@ interface that the agent core can consume without importing the SDK.
 
 **Depends on:** Phase 1 (settings), Phase 3 (telemetry).
 
-### 7.1 Model definitions — `src/gemini_agent/llm/models.py`
+### 6.1 Model definitions — `src/gemini_agent/llm/models.py`
 
 Define supported models, their properties, and fallback rules.
 
@@ -953,7 +905,7 @@ Include helper functions:
 - `get_fallback(name: str) -> ModelInfo | None` — resolve the fallback chain.
 - `list_models() -> list[ModelInfo]` — all available models.
 
-### 7.2 Retry logic — `src/gemini_agent/llm/retry.py`
+### 6.2 Retry logic — `src/gemini_agent/llm/retry.py`
 
 ```python
 """Bounded exponential backoff for transient Gemini API errors."""
@@ -992,7 +944,7 @@ async def with_retry(
 - Respect `Retry-After` headers when present.
 - Stop after `max_attempts` and raise the last exception.
 
-### 7.3 Gemini client — `src/gemini_agent/llm/client.py`
+### 6.3 Gemini client — `src/gemini_agent/llm/client.py`
 
 The client exposes two core methods:
 
@@ -1066,7 +1018,7 @@ The client is responsible for:
 8. Applying model fallback when the primary model returns an unrecoverable
    error and a fallback is defined.
 
-### 7.4 Streaming Tool Call and Thought Accumulation
+### 6.4 Streaming Tool Call and Thought Accumulation
 
 When calling `generate_stream()`, the Gemini model may emit chunks containing
 text, thoughts/reasoning parts, or function calls:
@@ -1087,7 +1039,7 @@ text, thoughts/reasoning parts, or function calls:
    is captured into `UsageInfo` and emitted as `StreamEvent(event_type="usage")`
    followed by `StreamEvent(event_type="done")`.
 
-### 7.5 System prompt composition — `src/gemini_agent/llm/prompts/system.py`
+### 6.5 System prompt composition — `src/gemini_agent/llm/prompts/system.py`
 
 ```python
 """System-instruction assembly and Jinja template rendering."""
@@ -1114,7 +1066,7 @@ def build_system_prompt(
     ...
 ```
 
-### 7.6 Prompt templates — `src/gemini_agent/llm/prompts/templates/`
+### 6.6 Prompt templates — `src/gemini_agent/llm/prompts/templates/`
 
 Create Jinja2 templates:
 
@@ -1128,7 +1080,7 @@ Create Jinja2 templates:
 - `project_context.jinja2` — wraps project instructions with untrusted-input
   delimiter.
 
-### 7.7 Tests — `tests/unit/llm/`
+### 6.7 Tests — `tests/unit/llm/`
 
 | Test file | What it validates |
 |-----------|-------------------|
@@ -1137,7 +1089,7 @@ Create Jinja2 templates:
 | `test_client.py` | SDK `generate_content` is called with correctly mapped messages and tools, response is mapped to `ModelResponse`, streaming yields expected `StreamEvent` sequence, function call chunks are properly accumulated before execution, fallback is triggered on 5xx, API key is never logged. Uses mocked SDK. |
 | `test_prompts.py` | `build_system_prompt` renders the correct role template, project instructions are delimited, missing template raises clear error. |
 
-### 7.8 Acceptance criteria
+### 6.8 Acceptance criteria
 
 - [ ] `GeminiClient` can be instantiated with test settings and a dummy key.
 - [ ] `generate()` with a mocked SDK returns a valid `ModelResponse`.
@@ -1151,7 +1103,7 @@ Create Jinja2 templates:
 
 ---
 
-## 8. Phase 5 — Tool System
+## 7. Phase 5 — Tool System
 
 **Goal:** A validated tool registry that exposes built-in capabilities to the
 agent through a uniform interface, with JSON Schema export for model
@@ -1159,7 +1111,7 @@ declarations.
 
 **Depends on:** Phase 1 (settings), Phase 3 (telemetry).
 
-### 8.1 Base tool contract — `src/gemini_agent/tools/base.py`
+### 7.1 Base tool contract — `src/gemini_agent/tools/base.py`
 
 ```python
 """Base classes for the tool system."""
@@ -1229,7 +1181,7 @@ class BaseTool(ABC):
         """Run the tool with validated parameters and return a result."""
 ```
 
-### 8.2 Tool registry — `src/gemini_agent/tools/registry.py`
+### 7.2 Tool registry — `src/gemini_agent/tools/registry.py`
 
 ```python
 class ToolRegistry:
@@ -1259,7 +1211,7 @@ class ToolRegistry:
         """
 ```
 
-### 8.3 Filesystem tools — `src/gemini_agent/tools/filesystem/`
+### 7.3 Filesystem tools — `src/gemini_agent/tools/filesystem/`
 
 Implement the following tools as separate modules within the package:
 
@@ -1329,7 +1281,7 @@ def validate_path(
     """
 ```
 
-### 8.4 Shell tool — `src/gemini_agent/tools/shell/`
+### 7.4 Shell tool — `src/gemini_agent/tools/shell/`
 
 #### `run_command.py`
 
@@ -1340,7 +1292,7 @@ def validate_path(
 | Parameters | `command: str`, `working_directory: str \| None`, `timeout_seconds: int \| None` |
 | Behavior | Delegate execution to the sandbox backend (Phase 6). Until the sandbox is implemented, this tool returns a `ToolResult` with `success=False` and an explanation. |
 
-### 8.5 Web tools — `src/gemini_agent/tools/web/`
+### 7.5 Web tools — `src/gemini_agent/tools/web/`
 
 #### `fetch_url.py`
 
@@ -1351,7 +1303,7 @@ def validate_path(
 | Parameters | `url: str`, `max_bytes: int = 524288` |
 | Behavior | Fetch a URL via `httpx`, validate the URL scheme (http/https only), enforce size limit, return text content. Reject private/internal IPs to prevent SSRF. |
 
-### 8.6 Code tools — `src/gemini_agent/tools/code/`
+### 7.6 Code tools — `src/gemini_agent/tools/code/`
 
 #### `code_search.py`
 
@@ -1362,7 +1314,7 @@ def validate_path(
 | Parameters | `query: str`, `file_extensions: list[str] \| None`, `max_results: int = 30` |
 | Behavior | Focused search across source files using regex. Similar to `grep` but defaults to source-code extensions and formats results with surrounding context lines. |
 
-### 8.7 Tests — `tests/unit/tools/`
+### 7.7 Tests — `tests/unit/tools/`
 
 | Test file | What it validates |
 |-----------|-------------------|
@@ -1376,7 +1328,7 @@ def validate_path(
 | `test_grep.py` | Regex search finds matches, handles invalid regex, respects max results. |
 | `test_fetch_url.py` | Fetches mocked URL, rejects `file://`, rejects private IPs, enforces size limit. |
 
-### 8.8 Acceptance criteria
+### 7.8 Acceptance criteria
 
 - [ ] All tools can be registered in `ToolRegistry` without name collisions.
 - [ ] `export_schemas()` returns valid JSON Schema for every registered tool.
@@ -1390,14 +1342,14 @@ def validate_path(
 
 ---
 
-## 9. Phase 6 — Sandbox and Approvals
+## 8. Phase 6 — Sandbox and Approvals
 
 **Goal:** Provide a secure execution boundary for shell commands and a
 confirmation mechanism for sensitive actions.
 
 **Depends on:** Phase 5 (tool system).
 
-### 9.1 Backend protocol — `src/gemini_agent/sandbox/base.py`
+### 8.1 Backend protocol — `src/gemini_agent/sandbox/base.py`
 
 ```python
 """Sandbox backend protocol."""
@@ -1431,7 +1383,7 @@ class SandboxBackend(Protocol):
     async def is_available(self) -> bool: ...
 ```
 
-### 9.2 Subprocess backend — `src/gemini_agent/sandbox/subprocess_backend.py`
+### 8.2 Subprocess backend — `src/gemini_agent/sandbox/subprocess_backend.py`
 
 Uses `asyncio.create_subprocess_shell` with:
 
@@ -1440,7 +1392,7 @@ Uses `asyncio.create_subprocess_shell` with:
 - Working directory validation against `allowed_roots`.
 - No inherited environment unless explicitly passed.
 
-### 9.3 Docker backend — `src/gemini_agent/sandbox/docker_backend.py`
+### 8.3 Docker backend — `src/gemini_agent/sandbox/docker_backend.py`
 
 Uses the Docker CLI or Docker SDK to:
 
@@ -1452,7 +1404,7 @@ Uses the Docker CLI or Docker SDK to:
 This backend is **optional**. If Docker is not available, the application
 falls back to the subprocess backend.
 
-### 9.4 Approval system — `src/gemini_agent/sandbox/approval.py`
+### 8.4 Approval system — `src/gemini_agent/sandbox/approval.py`
 
 ```python
 """Action classification and user-confirmation flow."""
@@ -1499,14 +1451,14 @@ class ApprovalManager:
         """
 ```
 
-### 9.5 Tests — `tests/unit/sandbox/`
+### 8.5 Tests — `tests/unit/sandbox/`
 
 | Test file | What it validates |
 |-----------|-------------------|
 | `test_subprocess_backend.py` | Command executes and returns stdout/stderr, timeout kills process, output truncated at limit, working-directory respected. |
 | `test_approval.py` | READ auto-approved, DESTRUCTIVE requires callback, denied callback returns `DENIED`, manager raises when no callback configured for destructive action. |
 
-### 9.6 Acceptance criteria
+### 8.6 Acceptance criteria
 
 - [ ] Subprocess backend executes `echo hello` and returns
   `ExecutionResult(exit_code=0, stdout="hello\n", ...)`.
@@ -1520,7 +1472,7 @@ class ApprovalManager:
 
 ---
 
-## 10. Phase 7 — Agent Core Runtime
+## 9. Phase 7 — Agent Core Runtime
 
 **Goal:** Implement the model-independent think-act-observe loop that
 connects the LLM client, tool registry, sandbox, and session management.
@@ -1528,7 +1480,7 @@ connects the LLM client, tool registry, sandbox, and session management.
 **Depends on:** Phase 4 (LLM), Phase 5 (tools), Phase 6 (sandbox), Phase 2
 (auth).
 
-### 10.1 Session — `src/gemini_agent/core/session.py`
+### 9.1 Session — `src/gemini_agent/core/session.py`
 
 ```python
 """Conversation session: messages, tool calls, and metadata."""
@@ -1561,7 +1513,7 @@ class Session:
     def update_usage(self, usage: UsageInfo) -> None: ...
 ```
 
-### 10.2 Context manager — `src/gemini_agent/core/context_manager.py`
+### 9.2 Context manager — `src/gemini_agent/core/context_manager.py`
 
 ```python
 """Keep requests within the model's context window."""
@@ -1590,7 +1542,7 @@ class ContextManager:
         """
 ```
 
-### 10.3 Local quota tracker — `src/gemini_agent/core/quota_tracker.py`
+### 9.3 Local quota tracker — `src/gemini_agent/core/quota_tracker.py`
 
 ```python
 """Client-side token and quota accounting."""
@@ -1634,7 +1586,7 @@ class QuotaTracker:
     def get_weekly_status(self) -> QuotaWindowStatus: ...
 ```
 
-### 10.4 Streaming adapter — `src/gemini_agent/core/streaming.py`
+### 9.4 Streaming adapter — `src/gemini_agent/core/streaming.py`
 
 ```python
 """Convert LLM streaming events into stable internal events."""
@@ -1665,7 +1617,7 @@ class AgentEvent:
 Both the interactive TUI and the non-interactive `run` command consume
 `AgentEvent` objects. They never import the Gemini SDK.
 
-### 10.5 Agent loop — `src/gemini_agent/core/agent.py`
+### 9.5 Agent loop — `src/gemini_agent/core/agent.py`
 
 This is the central orchestrator.
 
@@ -1728,7 +1680,7 @@ class Agent:
 | Max total tokens per session | Configurable | Tracked via `session.total_*_tokens`. |
 | Tool execution timeout | 30s | Handled by sandbox/tool. |
 
-### 10.6 Tests
+### 9.6 Tests
 
 | Test file | What it validates |
 |-----------|-------------------|
@@ -1752,7 +1704,7 @@ class FakeTool(BaseTool):
     def __init__(self, name: str, result: ToolResult) -> None: ...
 ```
 
-### 10.7 Acceptance criteria
+### 9.7 Acceptance criteria
 
 - [ ] Agent processes a simple text query (no tools) and yields
   `TEXT_CHUNK` → `DONE`.
@@ -1768,14 +1720,14 @@ class FakeTool(BaseTool):
 
 ---
 
-## 11. Phase 8 — CLI and Terminal UI
+## 10. Phase 8 — CLI and Terminal UI
 
 **Goal:** Build the user-facing terminal interface for interactive and
 one-shot workflows, matching the UI mockups.
 
 **Depends on:** Phase 7 (agent core).
 
-### 11.1 Application entry point — `src/gemini_agent/cli/app.py`
+### 10.1 Application entry point — `src/gemini_agent/cli/app.py`
 
 Extend the Phase 0 skeleton to register all sub-commands:
 
@@ -1805,7 +1757,7 @@ app.command()(mcp.remove_server)
 6. Initialize `GeminiClient`, `ToolRegistry`, `ApprovalManager`, `Agent`.
 7. Dispatch to the requested sub-command.
 
-### 11.2 Interactive chat — `src/gemini_agent/cli/commands/chat.py`
+### 10.2 Interactive chat — `src/gemini_agent/cli/commands/chat.py`
 
 ```python
 @app.command()
@@ -1817,7 +1769,7 @@ def chat(
     # Delegates to tui/repl.py.
 ```
 
-### 11.3 One-shot execution — `src/gemini_agent/cli/commands/run.py`
+### 10.3 One-shot execution — `src/gemini_agent/cli/commands/run.py`
 
 ```python
 @app.command()
@@ -1829,7 +1781,7 @@ def run(
     # Creates a session, runs agent.run(), prints final text, exits.
 ```
 
-### 11.4 Auth commands — `src/gemini_agent/cli/commands/auth.py`
+### 10.4 Auth commands — `src/gemini_agent/cli/commands/auth.py`
 
 | Command | Behavior |
 |---------|----------|
@@ -1837,14 +1789,14 @@ def run(
 | `gemini-cli logout` | Remove stored credentials from keyring. |
 | `gemini-cli auth status` | Show authentication method and validity. |
 
-### 11.5 Config commands — `src/gemini_agent/cli/commands/config.py`
+### 10.5 Config commands — `src/gemini_agent/cli/commands/config.py`
 
 | Command | Behavior |
 |---------|----------|
 | `gemini-cli config show` | Print all resolved settings (redact API key). |
 | `gemini-cli config set <key> <value>` | Write to project or global config file. |
 
-### 11.6 TUI / REPL — `src/gemini_agent/cli/tui/repl.py`
+### 10.6 TUI / REPL — `src/gemini_agent/cli/tui/repl.py`
 
 The terminal interface combines **`prompt_toolkit`** (for rich input, keybindings,
 autocompletion, and arrow-driven selection menus) with **`Rich`** (for visual
@@ -1941,7 +1893,7 @@ Authentication methods:
   Weekly     ████░░░░░░░░░░░  31%   resets Mon, 09:00
 ```
 
-### 11.7 Themes — `src/gemini_agent/cli/tui/themes.py`
+### 10.7 Themes — `src/gemini_agent/cli/tui/themes.py`
 
 ```python
 """Visual theme definitions for the terminal UI."""
@@ -1973,7 +1925,7 @@ DEFAULT_THEME = Theme(
 )
 ```
 
-### 11.8 Tests — `tests/unit/cli/`
+### 10.8 Tests — `tests/unit/cli/`
 
 | Test file | What it validates |
 |-----------|-------------------|
@@ -1982,7 +1934,7 @@ DEFAULT_THEME = Theme(
 | `test_slash_commands.py` | Slash command detection: `/role`, `/model`, `/help`, unknown slash command. |
 | `test_repl.py` | Interactive menu selection callback, escape key abort, prompt completion word provider. |
 
-### 11.9 Acceptance criteria
+### 10.9 Acceptance criteria
 
 - [ ] `gemini-cli chat` launches the REPL and displays the header.
 - [ ] `gemini-cli run "hello"` executes one prompt and exits.
@@ -1996,14 +1948,14 @@ DEFAULT_THEME = Theme(
 
 ---
 
-## 12. Phase 9 — MCP Integration and Production Readiness
+## 11. Phase 9 — MCP Integration and Production Readiness
 
 **Goal:** Support external tools through the Model Context Protocol and bring
 the project to a production-ready state.
 
 **Depends on:** Phase 7 (agent core), Phase 8 (CLI).
 
-### 12.1 MCP server configuration — `src/gemini_agent/mcp/server_config.py`
+### 11.1 MCP server configuration — `src/gemini_agent/mcp/server_config.py`
 
 ```python
 """Validate and store MCP server declarations."""
@@ -2039,7 +1991,7 @@ class McpServerConfig(BaseModel):
     def require_url_for_sse(cls, v, info): ...
 ```
 
-### 12.2 MCP client — `src/gemini_agent/mcp/client.py`
+### 11.2 MCP client — `src/gemini_agent/mcp/client.py`
 
 ```python
 """Manage MCP sessions over supported transports."""
@@ -2056,7 +2008,7 @@ class McpClient:
     async def call_tool(self, name: str, arguments: dict) -> ToolResult: ...
 ```
 
-### 12.3 Tool discovery — `src/gemini_agent/mcp/discovery.py`
+### 11.3 Tool discovery — `src/gemini_agent/mcp/discovery.py`
 
 ```python
 """Discover MCP tools and register them in the tool registry."""
@@ -2079,14 +2031,14 @@ class McpDiscovery:
         """
 ```
 
-### 12.4 MCP tool adapter
+### 11.4 MCP tool adapter
 
 Create `McpToolAdapter(BaseTool)` that wraps an MCP tool definition and
 delegates `execute()` to `McpClient.call_tool()`. This ensures MCP tools go
 through the same validation, approval, timeout, and result-handling pipeline
 as built-in tools.
 
-### 12.5 Production polish
+### 11.5 Production polish
 
 | Item | Description |
 |------|-------------|
@@ -2098,7 +2050,7 @@ as built-in tools.
 | Package metadata | Verify `pyproject.toml` classifiers, URLs, and author metadata. |
 | Release workflow | `.github/workflows/release.yml` — build and publish to PyPI on tag push. |
 
-### 12.6 Tests — `tests/unit/mcp/`
+### 11.6 Tests — `tests/unit/mcp/`
 
 | Test file | What it validates |
 |-----------|-------------------|
@@ -2106,7 +2058,7 @@ as built-in tools.
 | `test_client.py` | Connect/disconnect lifecycle with mocked transport, tool listing, tool call delegation. |
 | `test_discovery.py` | Tools are registered, naming conflicts are resolved with prefix, disabled servers are skipped. |
 
-### 12.7 Acceptance criteria
+### 11.7 Acceptance criteria
 
 - [ ] MCP server configuration validates correctly for both transports.
 - [ ] MCP tools appear in `ToolRegistry` alongside built-in tools.
@@ -2121,7 +2073,7 @@ as built-in tools.
 
 ---
 
-## 13. Future Extensions
+## 12. Future Extensions
 
 These are not part of the initial implementation plan but are documented as
 intended future work:
