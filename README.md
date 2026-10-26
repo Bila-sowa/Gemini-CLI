@@ -9,7 +9,7 @@
     <a href="#about">About</a> ·
     <a href="#demo">Demo</a> ·
     <a href="#features">Features</a> ·
-    <a href="./documentation/core/architecture.md">Architecture</a> ·
+    <a href="./documentation/architecture.md">Architecture</a> ·
     <a href="#license">License</a>
   </p>
 </div>
@@ -35,7 +35,7 @@ intended to support both an interactive terminal interface and script-friendly
 one-shot commands.
 
 The proposed modular architecture is documented in
-[Gemini Agent Architecture](./documentation/core/architecture.md).
+[Gemini Agent Architecture](./documentation/architecture.md).
 
 ### Why it was created
 

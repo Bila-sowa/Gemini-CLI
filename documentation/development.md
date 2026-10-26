@@ -1,0 +1,108 @@
+# Development
+
+This guide records the local development workflow for the `gemini-cli-py`
+package: environment setup, running the CLI, and the checks that must pass
+before a change is committed.
+
+## Prerequisites
+
+- Python 3.11–3.13 (3.12 is the recommended development version)
+- [uv](https://docs.astral.sh/uv/) for dependency management and command
+  execution
+
+The project uses a `src` layout. Run Python commands through `uv run` so the
+package is resolved from the local environment instead of the repository root.
+
+## Setup
+
+Sync the environment and install the development dependencies:
+
+```bash
+uv sync --all-extras
+```
+
+## Run the CLI
+
+```bash
+uv run gemini-cli-py --version
+uv run python -m gemini_cli --version
+uv run python -m gemini_cli --help
+```
+
+Both entry points should print `gemini-cli-py 0.1.0`.
+
+## Quality gates
+
+Run these checks before committing:
+
+```bash
+uv run ruff check src/
+uv run ruff format --check src/
+uv run mypy
+```
+
+After the test infrastructure lands (Phase 0, sub-phase 2.3), include the test
+directory in linting and run the test suite:
+
+```bash
+uv run ruff check src/ tests/
+uv run ruff format --check src/ tests/
+uv run pytest
+```
+
+## Package import smoke check
+
+Until the automated import test is added in sub-phase 2.3, verify that every
+module imports:
+
+```bash
+uv run python - <<'PY'
+import importlib
+from pathlib import Path
+
+root = Path("src/gemini_cli")
+modules = []
+for path in sorted(root.rglob("*.py")):
+    if "__pycache__" in path.parts:
+        continue
+    module = ".".join(path.relative_to("src").with_suffix("").parts)
+    if module.endswith(".__init__"):
+        module = module.removesuffix(".__init__")
+    modules.append(module)
+
+for module in modules:
+    importlib.import_module(module)
+print(f"imported {len(modules)} modules")
+PY
+```
+
+The snippet requires a POSIX-compatible shell. The planned pytest-based check
+will replace it.
+
+## Current status
+
+| Area | Status |
+|---|---|
+| Package install / `uv sync` | Available |
+| CLI `--version` and `--help` | Available |
+| Ruff / mypy | Available |
+| Test suite | Pending sub-phase 2.3 |
+| CI pipeline | Pending sub-phase 2.8 |
+
+Placeholder modules are marked with `TODO(Phase N)` and do not implement
+behavior yet. Do not treat their presence as a functional or security
+guarantee.
+
+## Troubleshooting
+
+- `ModuleNotFoundError: gemini_cli` — run the command through `uv run`, or
+  re-run `uv sync --all-extras`.
+- `uv run pytest` reports that `tests` does not exist — expected until
+  sub-phase 2.3.
+- `gemini-cli-py: command not found` — re-run `uv sync --all-extras` to
+  install the console script.
+
+## Related documentation
+
+- [Implementation plan](./plan.md)
+- [Architecture](./architecture.md)
