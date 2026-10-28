@@ -67,6 +67,18 @@ uv run mypy
 uv run pytest
 ```
 
+## Continuous integration
+
+GitHub Actions runs the same checks in `.github/workflows/ci.yml` for every
+branch push (tag pushes are excluded) and for pull requests targeting `main`.
+The `quality` job runs once per supported Python version (3.11, 3.12, 3.13):
+it installs the locked dependency set, then runs Ruff lint, the formatting
+check, mypy, and pytest with coverage.
+
+Reproduce a CI run locally with the commands from
+[Quality gates](#quality-gates). A failed lint, format, type, or test step
+blocks the workflow; coverage is reported but has no threshold yet.
+
 ## Package import smoke check
 
 Verify that every module imports:
@@ -105,7 +117,7 @@ The snippet requires a POSIX-compatible shell.
 | Test suite | Available (`pytest` smoke tests) |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
-| CI pipeline | Pending sub-phase 2.8 |
+| CI pipeline (`.github/workflows/ci.yml`) | Available |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security
