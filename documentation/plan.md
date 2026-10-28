@@ -58,7 +58,7 @@ complete. Phase 7 is the convergence point where all lower layers meet.
 ## 2. Phase 0 — Project Foundation
 
 **Goal:** Create a valid, installable Python package with tooling so that
-`uv sync`, `python -m gemini_agent`, and `gemini-cli --version` succeed.
+`uv sync`, `python -m gemini_cli`, and `gemini-cli-py --version` succeed.
 
 ### 2.1 Package definition — `pyproject.toml`
 
@@ -66,7 +66,7 @@ Create `pyproject.toml` in the repository root with the following sections:
 
 ```toml
 [project]
-name = "gemini-cli"
+name = "gemini-cli-py"
 version = "0.1.0"
 description = "A Gemini-first command-line agent for everyday work."
 readme = "README.md"
@@ -94,14 +94,14 @@ dev = [
 ]
 
 [project.scripts]
-gemini-cli = "gemini_agent.cli.app:main"
+gemini-cli-py = "gemini_cli.cli.app:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/gemini_agent"]
+packages = ["src/gemini_cli"]
 ```
 
 **Key decisions:**
@@ -111,7 +111,7 @@ packages = ["src/gemini_agent"]
 - Python target pinned to `>=3.11, <3.14` to guarantee library/C-extension compatibility across Linux/macOS/Windows, with `.python-version` set to `3.12`.
 - `prompt-toolkit` added alongside `rich` to support advanced REPL input: arrow-key interactive selection menus, slash command autocompletion, multi-line handling, and Escape key cancellation as required by mockups `Terminal-2.png` through `Terminal-6.png`.
 - Development dependencies are separated into `[project.optional-dependencies]`.
-- The `gemini-cli` entry point maps to `gemini_agent.cli.app:main`.
+- The `gemini-cli-py` entry point maps to `gemini_cli.cli.app:main`.
 
 ### 2.2 Source directory skeleton
 
@@ -122,9 +122,9 @@ any logic.
 
 ```
 src/
-└── gemini_agent/
+└── gemini_cli/
     ├── __init__.py          # __version__ = "0.1.0"
-    ├── __main__.py          # Entry point: from gemini_agent.cli.app import main; main()
+    ├── __main__.py          # Entry point: from gemini_cli.cli.app import main; main()
     ├── cli/
     │   ├── __init__.py
     │   ├── app.py           # Typer app with --version callback
@@ -193,7 +193,7 @@ src/
         └── logger.py       # Placeholder
 ```
 
-**`src/gemini_agent/__init__.py`:**
+**`src/gemini_cli/__init__.py`:**
 
 ```python
 """Gemini CLI — A Gemini-first command-line agent for everyday work."""
@@ -201,17 +201,17 @@ src/
 __version__ = "0.1.0"
 ```
 
-**`src/gemini_agent/__main__.py`:**
+**`src/gemini_cli/__main__.py`:**
 
 ```python
-"""Allow running with `python -m gemini_agent`."""
+"""Allow running with `python -m gemini_cli`."""
 
-from gemini_agent.cli.app import main
+from gemini_cli.cli.app import main
 
 main()
 ```
 
-**`src/gemini_agent/cli/app.py`** (minimal working CLI):
+**`src/gemini_cli/cli/app.py`** (minimal working CLI):
 
 ```python
 """Typer application and command registration."""
@@ -220,10 +220,10 @@ from __future__ import annotations
 
 import typer
 
-from gemini_agent import __version__
+from gemini_cli import __version__
 
 app = typer.Typer(
-    name="gemini-cli",
+    name="gemini-cli-py",
     help="A Gemini-first command-line agent for everyday work.",
     no_args_is_help=True,
 )
@@ -231,7 +231,7 @@ app = typer.Typer(
 
 def version_callback(value: bool) -> None:
     if value:
-        typer.echo(f"gemini-cli {__version__}")
+        typer.echo(f"gemini-cli-py {__version__}")
         raise typer.Exit()
 
 
@@ -333,14 +333,14 @@ select = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["gemini_agent"]
+known-first-party = ["gemini_cli"]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
 warn_return_any = true
 warn_unused_configs = true
-packages = ["gemini_agent"]
+packages = ["gemini_cli"]
 mypy_path = "src"
 ```
 
@@ -390,21 +390,35 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
+    name: quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --all-extras
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --all-extras --locked
+      - name: Show Python version
+        run: uv run python --version
       - name: Lint
         run: uv run ruff check src/ tests/
       - name: Format check
@@ -412,22 +426,28 @@ jobs:
       - name: Type check
         run: uv run mypy
       - name: Test
-        run: uv run pytest --cov=gemini_agent --cov-report=term-missing
+        run: uv run pytest --cov=gemini_cli --cov-report=term-missing
 ```
+
+`python-version` is passed through `setup-uv` because the repository pins
+`.python-version` to 3.12; without that input every matrix job would silently
+run the pinned version. Actions are pinned to commit SHAs, and the workflow
+runs on every branch push while excluding tag pushes.
 
 ### 2.9 Acceptance criteria
 
-- [ ] `.python-version` specifies `3.12`.
-- [ ] `uv sync` installs the package and all dependencies without errors.
-- [ ] `uv run gemini-cli --version` prints `gemini-cli 0.1.0`.
-- [ ] `uv run python -m gemini_agent --version` prints the same.
-- [ ] `uv run ruff check src/ tests/` passes with zero violations.
-- [ ] `uv run ruff format --check src/ tests/` passes.
-- [ ] `uv run mypy` passes with zero errors.
-- [ ] `uv run pytest` discovers the test directory and passes (zero tests
-  collected is acceptable at this stage).
-- [ ] All placeholder modules are importable: `from gemini_agent.core import
-  agent`, `from gemini_agent.tools import registry`, etc.
+- [x] `.python-version` specifies `3.12`.
+- [x] `uv sync` installs the package and all dependencies without errors.
+- [x] `uv run gemini-cli-py --version` prints the current package version
+  (for example, `v0.1.4`).
+- [x] `uv run python -m gemini_cli --version` prints the same.
+- [x] `uv run ruff check src/ tests/` passes with zero violations.
+- [x] `uv run ruff format --check src/ tests/` passes.
+- [x] `uv run mypy` passes with zero errors.
+- [x] `uv run pytest` discovers the test directory and passes: the CLI smoke
+  tests plus the module import checks.
+- [x] All placeholder modules are importable and covered by
+  `tests/unit/test_imports.py`.
 
 ---
 
@@ -439,7 +459,7 @@ discovery.
 
 **Depends on:** Phase 0.
 
-### 3.1 Default values — `src/gemini_agent/config/defaults.py`
+### 3.1 Default values — `src/gemini_cli/config/defaults.py`
 
 Define all built-in defaults as typed constants:
 
@@ -492,7 +512,7 @@ GLOBAL_CONFIG_DIR_NAME: str = ".gemini-cli"
 PROJECT_CONFIG_FILE_NAME: str = ".gemini-cli.toml"
 ```
 
-### 3.2 Settings model — `src/gemini_agent/config/settings.py`
+### 3.2 Settings model — `src/gemini_cli/config/settings.py`
 
 Use Pydantic Settings to compose the final configuration object. The
 precedence is: environment variables > project config file > global config
@@ -509,7 +529,7 @@ from typing import Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from gemini_agent.config.defaults import (
+from gemini_cli.config.defaults import (
     AVAILABLE_ROLES,
     DEFAULT_MAX_AGENT_ITERATIONS,
     DEFAULT_MAX_FILE_SIZE_BYTES,
@@ -590,7 +610,7 @@ class Settings(BaseSettings):
 - `allowed_roots` defaults to an empty list; the CLI layer populates it with
   the current working directory at startup.
 
-### 3.3 Project context discovery — `src/gemini_agent/config/project_context.py`
+### 3.3 Project context discovery — `src/gemini_cli/config/project_context.py`
 
 ```python
 """Discover and load project-level instruction files."""
@@ -601,7 +621,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from gemini_agent.config.defaults import PROJECT_INSTRUCTION_FILES
+from gemini_cli.config.defaults import PROJECT_INSTRUCTION_FILES
 
 logger = logging.getLogger(__name__)
 
@@ -655,8 +675,8 @@ def load_project_context(search_root: Path) -> ProjectContext:
 ```python
 """Configuration package — public surface."""
 
-from gemini_agent.config.project_context import ProjectContext, load_project_context
-from gemini_agent.config.settings import Settings
+from gemini_cli.config.project_context import ProjectContext, load_project_context
+from gemini_cli.config.settings import Settings
 
 __all__ = ["ProjectContext", "Settings", "load_project_context"]
 ```
@@ -690,7 +710,7 @@ stub for future Google OAuth support.
 
 **Depends on:** Phase 1 (settings).
 
-### 4.1 API key provider — `src/gemini_agent/auth/api_key.py`
+### 4.1 API key provider — `src/gemini_cli/auth/api_key.py`
 
 ```python
 """API key resolution: environment → keyring → prompt."""
@@ -718,7 +738,7 @@ that checks, in order:
 2. System keyring via `keyring.get_password("gemini-cli", "api-key")`.
 3. Returns an error or raises `AuthenticationError` if nothing found.
 
-### 4.2 Credential store — `src/gemini_agent/auth/credentials_store.py`
+### 4.2 Credential store — `src/gemini_cli/auth/credentials_store.py`
 
 The credential store is the **only** component that interacts with persistent
 secret storage.
@@ -744,13 +764,13 @@ All functions must:
 - Catch `keyring.errors.KeyringError` and raise a domain-specific error.
 - Never log, print, or include the actual key value in error messages.
 
-### 4.3 OAuth stub — `src/gemini_agent/auth/oauth.py`
+### 4.3 OAuth stub — `src/gemini_cli/auth/oauth.py`
 
 Create a module with a single class `OAuthProvider` whose methods raise
 `NotImplementedError("Google OAuth is not yet supported.")`. This signals
 intent without adding dead code.
 
-### 4.4 Auth exceptions — `src/gemini_agent/auth/__init__.py`
+### 4.4 Auth exceptions — `src/gemini_cli/auth/__init__.py`
 
 ```python
 """Authentication package."""
@@ -789,7 +809,7 @@ telemetry foundation.
 
 **Depends on:** Phase 0.
 
-### 5.1 Logger setup — `src/gemini_agent/telemetry/logger.py`
+### 5.1 Logger setup — `src/gemini_cli/telemetry/logger.py`
 
 Implement the following:
 
@@ -857,7 +877,7 @@ interface that the agent core can consume without importing the SDK.
 
 **Depends on:** Phase 1 (settings), Phase 3 (telemetry).
 
-### 6.1 Model definitions — `src/gemini_agent/llm/models.py`
+### 6.1 Model definitions — `src/gemini_cli/llm/models.py`
 
 Define supported models, their properties, and fallback rules.
 
@@ -905,7 +925,7 @@ Include helper functions:
 - `get_fallback(name: str) -> ModelInfo | None` — resolve the fallback chain.
 - `list_models() -> list[ModelInfo]` — all available models.
 
-### 6.2 Retry logic — `src/gemini_agent/llm/retry.py`
+### 6.2 Retry logic — `src/gemini_cli/llm/retry.py`
 
 ```python
 """Bounded exponential backoff for transient Gemini API errors."""
@@ -944,7 +964,7 @@ async def with_retry(
 - Respect `Retry-After` headers when present.
 - Stop after `max_attempts` and raise the last exception.
 
-### 6.3 Gemini client — `src/gemini_agent/llm/client.py`
+### 6.3 Gemini client — `src/gemini_cli/llm/client.py`
 
 The client exposes two core methods:
 
@@ -1039,7 +1059,7 @@ text, thoughts/reasoning parts, or function calls:
    is captured into `UsageInfo` and emitted as `StreamEvent(event_type="usage")`
    followed by `StreamEvent(event_type="done")`.
 
-### 6.5 System prompt composition — `src/gemini_agent/llm/prompts/system.py`
+### 6.5 System prompt composition — `src/gemini_cli/llm/prompts/system.py`
 
 ```python
 """System-instruction assembly and Jinja template rendering."""
@@ -1066,7 +1086,7 @@ def build_system_prompt(
     ...
 ```
 
-### 6.6 Prompt templates — `src/gemini_agent/llm/prompts/templates/`
+### 6.6 Prompt templates — `src/gemini_cli/llm/prompts/templates/`
 
 Create Jinja2 templates:
 
@@ -1111,7 +1131,7 @@ declarations.
 
 **Depends on:** Phase 1 (settings), Phase 3 (telemetry).
 
-### 7.1 Base tool contract — `src/gemini_agent/tools/base.py`
+### 7.1 Base tool contract — `src/gemini_cli/tools/base.py`
 
 ```python
 """Base classes for the tool system."""
@@ -1181,7 +1201,7 @@ class BaseTool(ABC):
         """Run the tool with validated parameters and return a result."""
 ```
 
-### 7.2 Tool registry — `src/gemini_agent/tools/registry.py`
+### 7.2 Tool registry — `src/gemini_cli/tools/registry.py`
 
 ```python
 class ToolRegistry:
@@ -1211,7 +1231,7 @@ class ToolRegistry:
         """
 ```
 
-### 7.3 Filesystem tools — `src/gemini_agent/tools/filesystem/`
+### 7.3 Filesystem tools — `src/gemini_cli/tools/filesystem/`
 
 Implement the following tools as separate modules within the package:
 
@@ -1281,7 +1301,7 @@ def validate_path(
     """
 ```
 
-### 7.4 Shell tool — `src/gemini_agent/tools/shell/`
+### 7.4 Shell tool — `src/gemini_cli/tools/shell/`
 
 #### `run_command.py`
 
@@ -1292,7 +1312,7 @@ def validate_path(
 | Parameters | `command: str`, `working_directory: str \| None`, `timeout_seconds: int \| None` |
 | Behavior | Delegate execution to the sandbox backend (Phase 6). Until the sandbox is implemented, this tool returns a `ToolResult` with `success=False` and an explanation. |
 
-### 7.5 Web tools — `src/gemini_agent/tools/web/`
+### 7.5 Web tools — `src/gemini_cli/tools/web/`
 
 #### `fetch_url.py`
 
@@ -1303,7 +1323,7 @@ def validate_path(
 | Parameters | `url: str`, `max_bytes: int = 524288` |
 | Behavior | Fetch a URL via `httpx`, validate the URL scheme (http/https only), enforce size limit, return text content. Reject private/internal IPs to prevent SSRF. |
 
-### 7.6 Code tools — `src/gemini_agent/tools/code/`
+### 7.6 Code tools — `src/gemini_cli/tools/code/`
 
 #### `code_search.py`
 
@@ -1349,7 +1369,7 @@ confirmation mechanism for sensitive actions.
 
 **Depends on:** Phase 5 (tool system).
 
-### 8.1 Backend protocol — `src/gemini_agent/sandbox/base.py`
+### 8.1 Backend protocol — `src/gemini_cli/sandbox/base.py`
 
 ```python
 """Sandbox backend protocol."""
@@ -1383,7 +1403,7 @@ class SandboxBackend(Protocol):
     async def is_available(self) -> bool: ...
 ```
 
-### 8.2 Subprocess backend — `src/gemini_agent/sandbox/subprocess_backend.py`
+### 8.2 Subprocess backend — `src/gemini_cli/sandbox/subprocess_backend.py`
 
 Uses `asyncio.create_subprocess_shell` with:
 
@@ -1392,7 +1412,7 @@ Uses `asyncio.create_subprocess_shell` with:
 - Working directory validation against `allowed_roots`.
 - No inherited environment unless explicitly passed.
 
-### 8.3 Docker backend — `src/gemini_agent/sandbox/docker_backend.py`
+### 8.3 Docker backend — `src/gemini_cli/sandbox/docker_backend.py`
 
 Uses the Docker CLI or Docker SDK to:
 
@@ -1404,7 +1424,7 @@ Uses the Docker CLI or Docker SDK to:
 This backend is **optional**. If Docker is not available, the application
 falls back to the subprocess backend.
 
-### 8.4 Approval system — `src/gemini_agent/sandbox/approval.py`
+### 8.4 Approval system — `src/gemini_cli/sandbox/approval.py`
 
 ```python
 """Action classification and user-confirmation flow."""
@@ -1480,7 +1500,7 @@ connects the LLM client, tool registry, sandbox, and session management.
 **Depends on:** Phase 4 (LLM), Phase 5 (tools), Phase 6 (sandbox), Phase 2
 (auth).
 
-### 9.1 Session — `src/gemini_agent/core/session.py`
+### 9.1 Session — `src/gemini_cli/core/session.py`
 
 ```python
 """Conversation session: messages, tool calls, and metadata."""
@@ -1513,7 +1533,7 @@ class Session:
     def update_usage(self, usage: UsageInfo) -> None: ...
 ```
 
-### 9.2 Context manager — `src/gemini_agent/core/context_manager.py`
+### 9.2 Context manager — `src/gemini_cli/core/context_manager.py`
 
 ```python
 """Keep requests within the model's context window."""
@@ -1542,7 +1562,7 @@ class ContextManager:
         """
 ```
 
-### 9.3 Local quota tracker — `src/gemini_agent/core/quota_tracker.py`
+### 9.3 Local quota tracker — `src/gemini_cli/core/quota_tracker.py`
 
 ```python
 """Client-side token and quota accounting."""
@@ -1586,7 +1606,7 @@ class QuotaTracker:
     def get_weekly_status(self) -> QuotaWindowStatus: ...
 ```
 
-### 9.4 Streaming adapter — `src/gemini_agent/core/streaming.py`
+### 9.4 Streaming adapter — `src/gemini_cli/core/streaming.py`
 
 ```python
 """Convert LLM streaming events into stable internal events."""
@@ -1617,7 +1637,7 @@ class AgentEvent:
 Both the interactive TUI and the non-interactive `run` command consume
 `AgentEvent` objects. They never import the Gemini SDK.
 
-### 9.5 Agent loop — `src/gemini_agent/core/agent.py`
+### 9.5 Agent loop — `src/gemini_cli/core/agent.py`
 
 This is the central orchestrator.
 
@@ -1727,13 +1747,13 @@ one-shot workflows, matching the UI mockups.
 
 **Depends on:** Phase 7 (agent core).
 
-### 10.1 Application entry point — `src/gemini_agent/cli/app.py`
+### 10.1 Application entry point — `src/gemini_cli/cli/app.py`
 
 Extend the Phase 0 skeleton to register all sub-commands:
 
 ```python
 # Registration
-from gemini_agent.cli.commands import auth, chat, config, mcp, run
+from gemini_cli.cli.commands import auth, chat, config, mcp, run
 
 app.command()(chat.chat)
 app.command()(run.run)
@@ -1757,7 +1777,7 @@ app.command()(mcp.remove_server)
 6. Initialize `GeminiClient`, `ToolRegistry`, `ApprovalManager`, `Agent`.
 7. Dispatch to the requested sub-command.
 
-### 10.2 Interactive chat — `src/gemini_agent/cli/commands/chat.py`
+### 10.2 Interactive chat — `src/gemini_cli/cli/commands/chat.py`
 
 ```python
 @app.command()
@@ -1769,7 +1789,7 @@ def chat(
     # Delegates to tui/repl.py.
 ```
 
-### 10.3 One-shot execution — `src/gemini_agent/cli/commands/run.py`
+### 10.3 One-shot execution — `src/gemini_cli/cli/commands/run.py`
 
 ```python
 @app.command()
@@ -1781,22 +1801,22 @@ def run(
     # Creates a session, runs agent.run(), prints final text, exits.
 ```
 
-### 10.4 Auth commands — `src/gemini_agent/cli/commands/auth.py`
+### 10.4 Auth commands — `src/gemini_cli/cli/commands/auth.py`
 
 | Command | Behavior |
 |---------|----------|
-| `gemini-cli login` | Prompt for API key, store in keyring, verify with a test API call. |
-| `gemini-cli logout` | Remove stored credentials from keyring. |
-| `gemini-cli auth status` | Show authentication method and validity. |
+| `gemini-cli-py login` | Prompt for API key, store in keyring, verify with a test API call. |
+| `gemini-cli-py logout` | Remove stored credentials from keyring. |
+| `gemini-cli-py auth status` | Show authentication method and validity. |
 
-### 10.5 Config commands — `src/gemini_agent/cli/commands/config.py`
+### 10.5 Config commands — `src/gemini_cli/cli/commands/config.py`
 
 | Command | Behavior |
 |---------|----------|
-| `gemini-cli config show` | Print all resolved settings (redact API key). |
-| `gemini-cli config set <key> <value>` | Write to project or global config file. |
+| `gemini-cli-py config show` | Print all resolved settings (redact API key). |
+| `gemini-cli-py config set <key> <value>` | Write to project or global config file. |
 
-### 10.6 TUI / REPL — `src/gemini_agent/cli/tui/repl.py`
+### 10.6 TUI / REPL — `src/gemini_cli/cli/tui/repl.py`
 
 The terminal interface combines **`prompt_toolkit`** (for rich input, keybindings,
 autocompletion, and arrow-driven selection menus) with **`Rich`** (for visual
@@ -1893,7 +1913,7 @@ Authentication methods:
   Weekly     ████░░░░░░░░░░░  31%   resets Mon, 09:00
 ```
 
-### 10.7 Themes — `src/gemini_agent/cli/tui/themes.py`
+### 10.7 Themes — `src/gemini_cli/cli/tui/themes.py`
 
 ```python
 """Visual theme definitions for the terminal UI."""
@@ -1936,10 +1956,10 @@ DEFAULT_THEME = Theme(
 
 ### 10.9 Acceptance criteria
 
-- [ ] `gemini-cli chat` launches the REPL and displays the header.
-- [ ] `gemini-cli run "hello"` executes one prompt and exits.
-- [ ] `gemini-cli login` prompts for an API key and stores it.
-- [ ] `gemini-cli config show` prints all settings with the API key redacted.
+- [ ] `gemini-cli-py chat` launches the REPL and displays the header.
+- [ ] `gemini-cli-py run "hello"` executes one prompt and exits.
+- [ ] `gemini-cli-py login` prompts for an API key and stores it.
+- [ ] `gemini-cli-py config show` prints all settings with the API key redacted.
 - [ ] Slash commands trigger the expected UI flow with prompt autocompletion.
 - [ ] The REPL displays streaming text character by character via Rich console.
 - [ ] Role, model, and auth selection prompts allow Up/Down arrow navigation and Escape cancellation.
@@ -1955,7 +1975,7 @@ the project to a production-ready state.
 
 **Depends on:** Phase 7 (agent core), Phase 8 (CLI).
 
-### 11.1 MCP server configuration — `src/gemini_agent/mcp/server_config.py`
+### 11.1 MCP server configuration — `src/gemini_cli/mcp/server_config.py`
 
 ```python
 """Validate and store MCP server declarations."""
@@ -1991,7 +2011,7 @@ class McpServerConfig(BaseModel):
     def require_url_for_sse(cls, v, info): ...
 ```
 
-### 11.2 MCP client — `src/gemini_agent/mcp/client.py`
+### 11.2 MCP client — `src/gemini_cli/mcp/client.py`
 
 ```python
 """Manage MCP sessions over supported transports."""
@@ -2008,7 +2028,7 @@ class McpClient:
     async def call_tool(self, name: str, arguments: dict) -> ToolResult: ...
 ```
 
-### 11.3 Tool discovery — `src/gemini_agent/mcp/discovery.py`
+### 11.3 Tool discovery — `src/gemini_cli/mcp/discovery.py`
 
 ```python
 """Discover MCP tools and register them in the tool registry."""
@@ -2046,7 +2066,7 @@ as built-in tools.
 | Error handling audit | Review every `except` block. Ensure no bare `except:`, no swallowed exceptions, and structured error reporting. |
 | Dependency audit | Run `uv pip audit` or equivalent. Check for known vulnerabilities. |
 | Documentation | `documentation/tools.md` — document every built-in tool, its parameters, and expected behavior. |
-| `py.typed` marker | Add `src/gemini_agent/py.typed` for PEP 561 compliance. |
+| `py.typed` marker | Add `src/gemini_cli/py.typed` for PEP 561 compliance. |
 | Package metadata | Verify `pyproject.toml` classifiers, URLs, and author metadata. |
 | Release workflow | `.github/workflows/release.yml` — build and publish to PyPI on tag push. |
 
@@ -2064,12 +2084,12 @@ as built-in tools.
 - [ ] MCP tools appear in `ToolRegistry` alongside built-in tools.
 - [ ] MCP tools go through the same approval flow as built-in tools.
 - [ ] Naming conflicts are resolved without silent overwrites.
-- [ ] `gemini-cli mcp list` shows configured servers.
-- [ ] `gemini-cli mcp add` adds a new server configuration.
+- [ ] `gemini-cli-py mcp list` shows configured servers.
+- [ ] `gemini-cli-py mcp add` adds a new server configuration.
 - [ ] All existing tests continue to pass.
 - [ ] `uv run ruff check`, `uv run ruff format --check`, and `uv run mypy`
   all pass.
-- [ ] `uv run pytest --cov` reports ≥80% coverage on `src/gemini_agent/`.
+- [ ] `uv run pytest --cov` reports ≥80% coverage on `src/gemini_cli/`.
 
 ---
 

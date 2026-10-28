@@ -2,7 +2,7 @@
 
 ## Overview
 
-`gemini_agent` is a command-line AI agent built around the Gemini API. The
+`gemini_cli` is a command-line AI agent built around the Gemini API. The
 project is organized as a layered Python package so that the user interface,
 agent orchestration, model integration, tools, security boundaries, and
 configuration can evolve independently.
@@ -53,9 +53,9 @@ interfaces so that they can be replaced with test doubles.
 ## Package Layout
 
 ```text
-gemini_agent/
+gemini_cli/
 ├── src/
-│   └── gemini_agent/
+│   └── gemini_cli/
 │       ├── __init__.py
 │       ├── __main__.py
 │       ├── cli/
@@ -126,7 +126,9 @@ gemini_agent/
 ├── documentation/
 │   ├── architecture.md
 │   └── tools.md
+├── .env.example
 ├── .github/workflows/ci.yml
+├── .python-version
 ├── pyproject.toml
 ├── README.md
 ├── GEMINI.md.example
@@ -141,8 +143,8 @@ as production usage.
 
 ### Application entry points and CLI
 
-`gemini_agent.__main__` is the module entry point for `python -m
-gemini_agent`. It should contain minimal bootstrapping and delegate command
+`gemini_cli.__main__` is the module entry point for `python -m
+gemini_cli`. It should contain minimal bootstrapping and delegate command
 registration and argument parsing to `cli/app.py`.
 
 The `cli` package is an adapter between users and the application core:
@@ -296,7 +298,7 @@ sanitized error categories.
 
 ### Interactive chat
 
-1. `python -m gemini_agent chat` enters through `__main__.py` and `cli/app.py`.
+1. `python -m gemini_cli chat` enters through `__main__.py` and `cli/app.py`.
 2. Configuration, project context, credentials, and tool definitions are
    loaded.
 3. The TUI creates a session and forwards user messages to the agent.

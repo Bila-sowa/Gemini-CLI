@@ -9,16 +9,17 @@
     <a href="#about">About</a> ·
     <a href="#demo">Demo</a> ·
     <a href="#features">Features</a> ·
-    <a href="./documentation/core/architecture.md">Architecture</a> ·
+    <a href="./documentation/architecture.md">Architecture</a> ·
     <a href="#license">License</a>
   </p>
 </div>
 
 > [!NOTE]
-> **Project status:** Gemini CLI is currently in the design and prototyping
-> stage. The screenshots below are interface concepts, and the feature list
-> describes the intended product scope. A runnable package has not been
-> released yet.
+> **Project status:** Phase 0 (project foundation) is complete. The package
+> installs, the CLI skeleton responds to `--version`, and CI runs lint, type
+> checks, and tests on Python 3.11–3.13. The screenshots below are interface
+> concepts, and the feature list describes the intended product scope. The
+> package has not been published to PyPI yet.
 
 ## About
 
@@ -35,7 +36,7 @@ intended to support both an interactive terminal interface and script-friendly
 one-shot commands.
 
 The proposed modular architecture is documented in
-[Gemini Agent Architecture](./documentation/core/architecture.md).
+[Gemini Agent Architecture](./documentation/architecture.md).
 
 ### Why it was created
 
@@ -83,23 +84,11 @@ The intended distinction is the combination of product focus and architecture:
 The following early interface mockups illustrate the intended terminal
 experience. Visuals and commands may change as implementation progresses.
 
+<img src="./documentation/ui/model/Terminal-1.png" alt="Gemini CLI interactive workspace">
+
+<img src="./documentation/ui/model/Terminal-2.png" alt="Gemini CLI command completion">
+
 <table>
-  <tr>
-    <td width="50%" align="center">
-      <strong>Interactive workspace and error feedback</strong>
-    </td>
-    <td width="50%" align="center">
-      <strong>Command completion</strong>
-    </td>
-  </tr>
-  <tr>
-    <td>
-      <img src="./documentation/ui/model/Terminal-1.png" alt="Gemini CLI interactive workspace">
-    </td>
-    <td>
-      <img src="./documentation/ui/model/Terminal-2.png" alt="Gemini CLI command completion">
-    </td>
-  </tr>
   <tr>
     <td width="50%" align="center">
       <strong>Quota overview</strong>
@@ -256,19 +245,19 @@ are:
 
 ## Planned Stack
 
-| Area | Technology |
-| --- | --- |
-| Runtime | Python 3.11+ |
-| Model API | Gemini through `google-genai` |
-| CLI | Typer or Click |
-| Terminal UI | Rich or Textual |
-| Validation and settings | Pydantic and Pydantic Settings |
-| Prompt templates | Jinja |
-| Tool interoperability | MCP over stdio and SSE |
-| Isolation | Docker or a resource-limited subprocess |
-| Credential storage | Operating system keyring |
-| Packaging | `pyproject.toml` and `uv` |
-| Testing and quality | pytest, Ruff, and a static type checker |
+| Area                    | Technology                              |
+| ----------------------- | --------------------------------------- |
+| Runtime                 | Python 3.11+                            |
+| Model API               | Gemini through `google-genai`           |
+| CLI                     | Typer or Click                          |
+| Terminal UI             | Rich or Textual                         |
+| Validation and settings | Pydantic and Pydantic Settings          |
+| Prompt templates        | Jinja                                   |
+| Tool interoperability   | MCP over stdio and SSE                  |
+| Isolation               | Docker or a resource-limited subprocess |
+| Credential storage      | Operating system keyring                |
+| Packaging               | `pyproject.toml` and `uv`               |
+| Testing and quality     | pytest, Ruff, and a static type checker |
 
 ## License
 

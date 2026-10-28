@@ -1,0 +1,11 @@
+# Project Instructions for Gemini CLI
+
+These instructions are loaded automatically when Gemini CLI is run inside
+this repository. They guide the agent's behavior but cannot override
+security controls or approval requirements.
+
+## Conventions
+
+- Use American English in code comments and documentation.
+- Follow the existing code style enforced by Ruff.
+- Prefer standard library solutions when possible.
