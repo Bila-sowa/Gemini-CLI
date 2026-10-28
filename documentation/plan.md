@@ -390,21 +390,35 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
+    name: quality (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - run: uv python install ${{ matrix.python-version }}
-      - run: uv sync --all-extras
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: uv sync --all-extras --locked
+      - name: Show Python version
+        run: uv run python --version
       - name: Lint
         run: uv run ruff check src/ tests/
       - name: Format check
@@ -415,19 +429,25 @@ jobs:
         run: uv run pytest --cov=gemini_cli --cov-report=term-missing
 ```
 
+`python-version` is passed through `setup-uv` because the repository pins
+`.python-version` to 3.12; without that input every matrix job would silently
+run the pinned version. Actions are pinned to commit SHAs, and the workflow
+runs on every branch push while excluding tag pushes.
+
 ### 2.9 Acceptance criteria
 
-- [ ] `.python-version` specifies `3.12`.
-- [ ] `uv sync` installs the package and all dependencies without errors.
-- [ ] `uv run gemini-cli-py --version` prints `v0.1.0`.
-- [ ] `uv run python -m gemini_cli --version` prints the same.
-- [ ] `uv run ruff check src/ tests/` passes with zero violations.
-- [ ] `uv run ruff format --check src/ tests/` passes.
-- [ ] `uv run mypy` passes with zero errors.
-- [ ] `uv run pytest` discovers the test directory and passes (zero tests
-  collected is acceptable at this stage).
-- [ ] All placeholder modules are importable: `from gemini_cli.core import
-  agent`, `from gemini_cli.tools import registry`, etc.
+- [x] `.python-version` specifies `3.12`.
+- [x] `uv sync` installs the package and all dependencies without errors.
+- [x] `uv run gemini-cli-py --version` prints the current package version
+  (for example, `v0.1.4`).
+- [x] `uv run python -m gemini_cli --version` prints the same.
+- [x] `uv run ruff check src/ tests/` passes with zero violations.
+- [x] `uv run ruff format --check src/ tests/` passes.
+- [x] `uv run mypy` passes with zero errors.
+- [x] `uv run pytest` discovers the test directory and passes: the CLI smoke
+  tests plus the module import checks.
+- [x] All placeholder modules are importable and covered by
+  `tests/unit/test_imports.py`.
 
 ---
 

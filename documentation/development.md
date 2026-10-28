@@ -79,32 +79,17 @@ Reproduce a CI run locally with the commands from
 [Quality gates](#quality-gates). A failed lint, format, type, or test step
 blocks the workflow; coverage is reported but has no threshold yet.
 
-## Package import smoke check
+## Package import check
 
-Verify that every module imports:
+Every module in the package must be importable without credentials or
+configuration. This is enforced by `tests/unit/test_imports.py`:
 
 ```bash
-uv run python - <<'PY'
-import importlib
-from pathlib import Path
-
-root = Path("src/gemini_cli")
-modules = []
-for path in sorted(root.rglob("*.py")):
-    if "__pycache__" in path.parts:
-        continue
-    module = ".".join(path.relative_to("src").with_suffix("").parts)
-    if module.endswith(".__init__"):
-        module = module.removesuffix(".__init__")
-    modules.append(module)
-
-for module in modules:
-    importlib.import_module(module)
-print(f"imported {len(modules)} modules")
-PY
+uv run pytest tests/unit/test_imports.py
 ```
 
-The snippet requires a POSIX-compatible shell.
+The test parametrizes over every file under `src/gemini_cli/`, so a broken
+module is reported by name.
 
 ## Current status
 
@@ -114,10 +99,11 @@ The snippet requires a POSIX-compatible shell.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (`pytest` smoke tests) |
+| Test suite | Available (smoke, import, and entry-point tests) |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |
+| Phase 0 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security

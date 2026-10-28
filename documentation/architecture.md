@@ -126,7 +126,9 @@ gemini_cli/
 ├── documentation/
 │   ├── architecture.md
 │   └── tools.md
+├── .env.example
 ├── .github/workflows/ci.yml
+├── .python-version
 ├── pyproject.toml
 ├── README.md
 ├── GEMINI.md.example
