@@ -419,7 +419,7 @@ jobs:
 
 - [ ] `.python-version` specifies `3.12`.
 - [ ] `uv sync` installs the package and all dependencies without errors.
-- [ ] `uv run gemini-cli-py --version` prints `gemini-cli-py 0.1.0`.
+- [ ] `uv run gemini-cli-py --version` prints `v0.1.0`.
 - [ ] `uv run python -m gemini_cli --version` prints the same.
 - [ ] `uv run ruff check src/ tests/` passes with zero violations.
 - [ ] `uv run ruff format --check src/ tests/` passes.

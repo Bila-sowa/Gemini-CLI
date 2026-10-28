@@ -29,31 +29,22 @@ uv run python -m gemini_cli --version
 uv run python -m gemini_cli --help
 ```
 
-Both entry points should print `gemini-cli-py 0.1.0`.
+Both entry points should print `v0.1.0`.
 
 ## Quality gates
 
 Run these checks before committing:
 
 ```bash
-uv run ruff check src/
-uv run ruff format --check src/
-uv run mypy
-```
-
-After the test infrastructure lands (Phase 0, sub-phase 2.3), include the test
-directory in linting and run the test suite:
-
-```bash
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
+uv run mypy
 uv run pytest
 ```
 
 ## Package import smoke check
 
-Until the automated import test is added in sub-phase 2.3, verify that every
-module imports:
+Verify that every module imports:
 
 ```bash
 uv run python - <<'PY'
@@ -76,8 +67,7 @@ print(f"imported {len(modules)} modules")
 PY
 ```
 
-The snippet requires a POSIX-compatible shell. The planned pytest-based check
-will replace it.
+The snippet requires a POSIX-compatible shell.
 
 ## Current status
 
@@ -86,7 +76,7 @@ will replace it.
 | Package install / `uv sync` | Available |
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
-| Test suite | Pending sub-phase 2.3 |
+| Test suite | Available (`pytest` smoke tests) |
 | CI pipeline | Pending sub-phase 2.8 |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
@@ -97,8 +87,8 @@ guarantee.
 
 - `ModuleNotFoundError: gemini_cli` — run the command through `uv run`, or
   re-run `uv sync --all-extras`.
-- `uv run pytest` reports that `tests` does not exist — expected until
-  sub-phase 2.3.
+- `uv run pytest` exits with code 5 — no tests were collected; check that
+  `testpaths` in `pyproject.toml` still points at the `tests` directory.
 - `gemini-cli-py: command not found` — re-run `uv sync --all-extras` to
   install the console script.
 
