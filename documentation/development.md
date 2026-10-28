@@ -30,6 +30,21 @@ cp .env.example .env
 `.env` is ignored by git and stays on your machine; `.env.example` is the
 committed template. Never put a real key into `.env.example`.
 
+## Project instructions
+
+Optionally, copy the project-instruction template to add repository-specific
+guidance:
+
+```bash
+cp GEMINI.md.example GEMINI.md
+```
+
+`GEMINI.md` is committed with the repository and loaded automatically on
+startup, whereas the `.example` file is never loaded on its own. Project
+instructions are treated as untrusted input: they can guide behavior but
+cannot override security controls, credential handling, or approval
+requirements.
+
 ## Run the CLI
 
 ```bash
@@ -38,8 +53,8 @@ uv run python -m gemini_cli --version
 uv run python -m gemini_cli --help
 ```
 
-Both entry points should print the current package version, for example
-`v0.1.1`.
+Both entry points should print the current package version prefixed with `v`
+(see `__version__` in `src/gemini_cli/__init__.py`).
 
 ## Quality gates
 
@@ -86,8 +101,10 @@ The snippet requires a POSIX-compatible shell.
 | Package install / `uv sync` | Available |
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
+| Python version (`.python-version`) | Available (3.12) |
 | Test suite | Available (`pytest` smoke tests) |
 | Environment template (`.env.example`) | Available |
+| Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline | Pending sub-phase 2.8 |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
