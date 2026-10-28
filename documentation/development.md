@@ -99,11 +99,13 @@ module is reported by name.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (smoke, import, and entry-point tests) |
+| Test suite | Available (111 tests: smoke, import, entry-point, and configuration tests) |
+| Configuration (`Settings`, project context) | Available |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |
 | Phase 0 acceptance | Passed |
+| Phase 1 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security

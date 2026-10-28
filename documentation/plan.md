@@ -691,15 +691,15 @@ __all__ = ["ProjectContext", "Settings", "load_project_context"]
 
 ### 3.6 Acceptance criteria
 
-- [ ] `Settings()` can be constructed with no environment variables set (all
+- [x] `Settings()` can be constructed with no environment variables set (all
   defaults apply).
-- [ ] Setting `GEMINI_MODEL=gemini-2.5-pro` via env correctly overrides the
+- [x] Setting `GEMINI_MODEL=gemini-2.5-pro` via env correctly overrides the
   default.
-- [ ] Invalid role value raises `pydantic.ValidationError`.
-- [ ] `load_project_context()` returns combined instructions from found files.
-- [ ] `load_project_context()` returns empty `ProjectContext` when no files
+- [x] Invalid role value raises `pydantic.ValidationError`.
+- [x] `load_project_context()` returns combined instructions from found files.
+- [x] `load_project_context()` returns empty `ProjectContext` when no files
   exist.
-- [ ] All tests pass with `uv run pytest tests/unit/config/`.
+- [x] All tests pass with `uv run pytest tests/unit/config/`.
 
 ---
 
