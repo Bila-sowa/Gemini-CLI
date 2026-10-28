@@ -21,6 +21,15 @@ Sync the environment and install the development dependencies:
 uv sync --all-extras
 ```
 
+Optionally, copy the environment template and fill in a local API key:
+
+```bash
+cp .env.example .env
+```
+
+`.env` is ignored by git and stays on your machine; `.env.example` is the
+committed template. Never put a real key into `.env.example`.
+
 ## Run the CLI
 
 ```bash
@@ -29,7 +38,8 @@ uv run python -m gemini_cli --version
 uv run python -m gemini_cli --help
 ```
 
-Both entry points should print `v0.1.0`.
+Both entry points should print the current package version, for example
+`v0.1.1`.
 
 ## Quality gates
 
@@ -77,6 +87,7 @@ The snippet requires a POSIX-compatible shell.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Test suite | Available (`pytest` smoke tests) |
+| Environment template (`.env.example`) | Available |
 | CI pipeline | Pending sub-phase 2.8 |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
