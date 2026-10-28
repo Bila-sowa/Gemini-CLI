@@ -1,6 +1,6 @@
 [project]
 name = "gemini-cli-py"
-version = "0.4.1"
+version = "0.5.0"
 description = "A Gemini-first command-line agent for everyday work."
 readme = "README.md"
 license = "Apache-2.0"

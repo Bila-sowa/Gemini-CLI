@@ -1,3 +1,3 @@
 """Gemini CLI — A Gemini-first command-line agent for everyday work."""
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
