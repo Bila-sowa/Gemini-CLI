@@ -793,12 +793,12 @@ class CredentialStoreError(Exception):
 
 ### 4.6 Acceptance criteria
 
-- [ ] API key from `GEMINI_API_KEY` env var is resolved without touching keyring.
-- [ ] When env var is empty, keyring is queried.
-- [ ] `store_api_key` → `load_api_key` round-trip succeeds with mocked keyring.
-- [ ] Real API key values never appear in logs or error messages.
-- [ ] `OAuthProvider` methods raise `NotImplementedError`.
-- [ ] All tests pass: `uv run pytest tests/unit/auth/`.
+- [x] API key from `GEMINI_API_KEY` env var is resolved without touching keyring.
+- [x] When env var is empty, keyring is queried.
+- [x] `store_api_key` → `load_api_key` round-trip succeeds with mocked keyring.
+- [x] Real API key values never appear in logs or error messages.
+- [x] `OAuthProvider` methods raise `NotImplementedError`.
+- [x] All tests pass: `uv run pytest tests/unit/auth/`.
 
 ---
 
