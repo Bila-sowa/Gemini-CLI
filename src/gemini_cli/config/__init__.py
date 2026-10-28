@@ -1,1 +1,5 @@
-"""Configuration and project context (implemented in Phase 1)."""
+"""Configuration package — public surface."""
+
+from gemini_cli.config.settings import Settings
+
+__all__ = ["Settings"]
