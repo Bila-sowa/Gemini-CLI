@@ -81,6 +81,20 @@ Do not reveal hidden internal chain-of-thought reasoning. Instead, provide a con
 - If the repository already contains uncommitted changes, inspect them first and preserve them.
 - Choose the smallest change that fully solves the problem.
 
+5. Keep documentation current
+
+- Treat documentation as part of the change, not as follow-up work.
+- Whenever a code change affects documented behavior, update every affected
+  document in the same task, including `README.md`, `documentation/*.md`
+  (and the acceptance checkboxes in `documentation/plan.md`), docstrings,
+  `.env.example`, and configuration examples.
+- Keep documented commands, paths, version numbers, dependency lists, and
+  feature status consistent with the code.
+- If a document is intentionally left unchanged, state why in the final
+  summary.
+- Do not rewrite unrelated documentation or reformat it beyond what the
+  change requires.
+
 ## Python Code Requirements
 
 - Use the Python version specified by the project.
