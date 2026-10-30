@@ -206,6 +206,11 @@ Untrusted user or tool content must remain separate from system instructions.
 Fallbacks and retries must be bounded, observable, and restricted to errors
 that are safe to retry.
 
+Streaming yields text deltas as they arrive, but tool calls are buffered until
+their arguments are complete so partial JSON never reaches tool dispatch.
+`generate()` retries transient failures and then tries the registry fallback
+once; a stream is never replayed, because that would duplicate emitted text.
+
 ### Tool system
 
 The `tools` package provides a common interface for capabilities available to
