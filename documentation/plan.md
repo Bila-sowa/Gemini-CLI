@@ -859,13 +859,13 @@ class ToolCallEvent:
 
 ### 5.3 Acceptance criteria
 
-- [ ] `configure_logging("DEBUG", False)` attaches console handler but not
+- [x] `configure_logging("DEBUG", False)` attaches console handler but not
   telemetry handler.
-- [ ] A log message containing `"api_key=AIzaSyB..."` is output as
+- [x] A log message containing `"api_key=AIzaSyB..."` is output as
   `"api_key=[REDACTED]"`.
-- [ ] `ModelCallEvent` and `ToolCallEvent` never include prompt content or
+- [x] `ModelCallEvent` and `ToolCallEvent` never include prompt content or
   tool arguments.
-- [ ] All tests pass: `uv run pytest tests/unit/telemetry/`.
+- [x] All tests pass: `uv run pytest tests/unit/telemetry/`.
 
 ---
 

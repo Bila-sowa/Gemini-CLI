@@ -91,6 +91,16 @@ uv run pytest tests/unit/test_imports.py
 The test parametrizes over every file under `src/gemini_cli/`, so a broken
 module is reported by name.
 
+## Logging and telemetry
+
+`gemini_cli` uses structured logging and optional client-side telemetry:
+
+- **Console logs:** Human-readable Rich output sent to `stderr`.
+- **Application logs:** Saved as JSON Lines to `~/.gemini-cli/logs/app.jsonl`.
+- **Telemetry logs:** Saved as JSON Lines to `~/.gemini-cli/logs/telemetry.jsonl` only when enabled (`GEMINI_TELEMETRY_ENABLED=true`). When telemetry is disabled (the default), no telemetry handler is attached, the telemetry logger is disabled, and events are discarded.
+- **Secret redaction:** The `RedactingFilter` automatically redacts API keys, passwords, tokens, and `AIza...` strings from log records before they are written to console or file outputs. Both `key=value` and `key:value` forms are covered, including prefixed names such as `GEMINI_API_KEY`.
+- **Telemetry privacy:** Telemetry events (`ModelCallEvent`, `ToolCallEvent`) record non-sensitive operational metrics (durations, token counts, statuses) and contain no prompt text or tool arguments.
+
 ## Current status
 
 | Area | Status |
@@ -99,15 +109,17 @@ module is reported by name.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (136 tests: smoke, import, entry-point, configuration, and authentication tests) |
+| Test suite | Available (159 tests: smoke, import, entry-point, configuration, authentication, and logging/telemetry tests) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
+| Logging and Telemetry (`configure_logging`, secret redaction) | Available |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |
 | Phase 0 acceptance | Passed |
 | Phase 1 acceptance | Passed |
 | Phase 2 acceptance | Passed |
+| Phase 3 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security
