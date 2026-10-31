@@ -1111,15 +1111,15 @@ Create Jinja2 templates:
 
 ### 6.8 Acceptance criteria
 
-- [ ] `GeminiClient` can be instantiated with test settings and a dummy key.
-- [ ] `generate()` with a mocked SDK returns a valid `ModelResponse`.
-- [ ] `generate_stream()` with a mocked SDK yields `text_delta` then `done`.
-- [ ] `generate_stream()` properly buffers multi-chunk tool calls into a valid `ToolCallRequest`.
-- [ ] Retry logic stops after `max_attempts`.
-- [ ] Fallback switches to the fallback model on supported errors.
-- [ ] System prompt renders differently for each role.
-- [ ] No SDK types leak into the public interface of `llm/`.
-- [ ] All tests pass: `uv run pytest tests/unit/llm/`.
+- [x] `GeminiClient` can be instantiated with test settings and a dummy key.
+- [x] `generate()` with a mocked SDK returns a valid `ModelResponse`.
+- [x] `generate_stream()` with a mocked SDK yields `text_delta` then `done`.
+- [x] `generate_stream()` properly buffers multi-chunk tool calls into a valid `ToolCallRequest`.
+- [x] Retry logic stops after `max_attempts`.
+- [x] Fallback switches to the fallback model on supported errors.
+- [x] System prompt renders differently for each role.
+- [x] No SDK types leak into the public interface of `llm/`.
+- [x] All tests pass: `uv run pytest tests/unit/llm/`.
 
 ---
 

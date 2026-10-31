@@ -101,6 +101,27 @@ module is reported by name.
 - **Secret redaction:** The `RedactingFilter` automatically redacts API keys, passwords, tokens, and `AIza...` strings from log records before they are written to console or file outputs. Both `key=value` and `key:value` forms are covered, including prefixed names such as `GEMINI_API_KEY`.
 - **Telemetry privacy:** Telemetry events (`ModelCallEvent`, `ToolCallEvent`) record non-sensitive operational metrics (durations, token counts, statuses) and contain no prompt text or tool arguments.
 
+## LLM client
+
+`gemini_cli.llm` wraps `google-genai` behind domain types; SDK types never
+leave the package. Runtime behavior is driven by `Settings`:
+
+- `GEMINI_MODEL` selects a registered model (`gemini-2.5-flash`,
+  `gemini-2.5-pro`); unknown names raise `UnknownModelError`.
+- `GEMINI_RETRY_ATTEMPTS` sets the total number of attempts (minimum 1) for
+  transient statuses `429`, `500`, and `503`. Client errors are never retried.
+- `GEMINI_REQUEST_TIMEOUT_MS` bounds each attempt.
+- `GEMINI_MAX_OUTPUT_TOKENS` is passed to the model.
+
+`GeminiClient.generate()` returns a `ModelResponse` and, after retries are
+exhausted on `404`, `429`, `500`, or `503`, retries once with the model's
+registry fallback (`gemini-2.5-pro` → `gemini-2.5-flash`).
+`GeminiClient.generate_stream()` yields `text_delta`, `tool_call_delta`,
+`usage`, `done`, or `error` events; it is not retried, and tool calls are
+emitted only after their arguments are complete. System prompts come from
+`llm/prompts/templates/`; project instructions are appended inside an
+untrusted, non-spoofable block.
+
 ## Current status
 
 | Area | Status |
@@ -109,10 +130,11 @@ module is reported by name.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (159 tests: smoke, import, entry-point, configuration, authentication, and logging/telemetry tests) |
+| Test suite | Available (231 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, and LLM client tests) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
+| LLM client (`generate`, `generate_stream`, retry, fallback, prompts) | Available |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |
@@ -120,6 +142,7 @@ module is reported by name.
 | Phase 1 acceptance | Passed |
 | Phase 2 acceptance | Passed |
 | Phase 3 acceptance | Passed |
+| Phase 4 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security
