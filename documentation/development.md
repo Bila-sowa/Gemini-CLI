@@ -233,6 +233,14 @@ Python regular expression and returns each match with its surrounding lines.
   binary and oversized files, a cap on scanned files, a scan deadline, and a
   per-line length limit. `max_results` counts blocks, not raw matches.
 
+### Acceptance suite
+
+`tests/unit/tools/test_builtin_tools.py` registers all eight built-in tools
+together and exercises the registry as the agent will: unique Gemini-compatible
+names, flat JSON Schema declarations for every tool, and the security guards
+(`/etc/passwd`, `../../etc/passwd`, `file:///`, and the unavailable shell tool)
+checked through `dispatch()`.
+
 ## Current status
 
 | Area | Status |
@@ -241,7 +249,7 @@ Python regular expression and returns each match with its surrounding lines.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (434 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, filesystem tools, shell tool, web tool, and code tool) |
+| Test suite | Available (446 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, and the Phase 5 acceptance suite) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -260,6 +268,7 @@ Python regular expression and returns each match with its surrounding lines.
 | Phase 2 acceptance | Passed |
 | Phase 3 acceptance | Passed |
 | Phase 4 acceptance | Passed |
+| Phase 5 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security

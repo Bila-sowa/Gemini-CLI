@@ -1350,15 +1350,15 @@ def validate_path(
 
 ### 7.8 Acceptance criteria
 
-- [ ] All tools can be registered in `ToolRegistry` without name collisions.
-- [ ] `export_schemas()` returns valid JSON Schema for every registered tool.
-- [ ] `dispatch("read_file", {"path": "/etc/passwd"})` is rejected when
+- [x] All tools can be registered in `ToolRegistry` without name collisions.
+- [x] `export_schemas()` returns valid JSON Schema for every registered tool.
+- [x] `dispatch("read_file", {"path": "/etc/passwd"})` is rejected when
   `/etc/` is not in `allowed_roots`.
-- [ ] Path traversal via `../../etc/passwd` is detected and rejected.
-- [ ] `fetch_url` with a `file:///` URL is rejected.
-- [ ] `run_command` returns a "not available" result until sandbox is
+- [x] Path traversal via `../../etc/passwd` is detected and rejected.
+- [x] `fetch_url` with a `file:///` URL is rejected.
+- [x] `run_command` returns a "not available" result until sandbox is
   implemented.
-- [ ] All tests pass: `uv run pytest tests/unit/tools/`.
+- [x] All tests pass: `uv run pytest tests/unit/tools/`.
 
 ---
 

@@ -10,13 +10,6 @@ from pydantic import BaseModel, ValidationError
 from gemini_cli.config import Settings
 from gemini_cli.tools import ToolRegistry
 from gemini_cli.tools.base import RiskLevel, ToolCategory
-from gemini_cli.tools.filesystem import (
-    EditFileTool,
-    FindFilesTool,
-    GrepTool,
-    ReadFileTool,
-    WriteFileTool,
-)
 from gemini_cli.tools.shell import (
     UNAVAILABLE_MESSAGE,
     RunCommandParams,
@@ -158,33 +151,6 @@ async def test_dispatch_through_registry_returns_structured_failure(
 
     assert result.success is False
     assert result.error == UNAVAILABLE_MESSAGE
-
-
-def test_all_phase_five_tools_register_without_collisions(
-    settings: Settings,
-) -> None:
-    registry = ToolRegistry()
-    tools = [
-        ReadFileTool(settings),
-        WriteFileTool(settings),
-        EditFileTool(settings),
-        FindFilesTool(settings),
-        GrepTool(settings),
-        RunCommandTool(settings),
-    ]
-
-    for tool in tools:
-        registry.register(tool)
-
-    assert sorted(tool.name for tool in registry.list_tools()) == [
-        "edit_file",
-        "find_files",
-        "grep",
-        "read_file",
-        "run_command",
-        "write_file",
-    ]
-    assert len(registry.export_schemas()) == len(tools)
 
 
 def test_tool_metadata(settings: Settings) -> None:
