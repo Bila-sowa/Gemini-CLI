@@ -124,7 +124,7 @@ untrusted, non-spoofable block.
 
 ## Tools
 
-`gemini_cli.tools` defines the shared tool contract; the registry and concrete
+`gemini_cli.tools` defines the shared tool contract and the registry; concrete
 tools are not implemented yet:
 
 - `BaseTool` requires a unique `name`, a model-facing `description`, a Pydantic
@@ -132,11 +132,19 @@ tools are not implemented yet:
   `execute(params) -> ToolResult`.
 - `ToolResult` carries `success`, `output`, optional `error`, and safe
   structured `metadata`. Expected failures are returned as a failed result
-  instead of being raised; unexpected exceptions are converted by the registry
-  once it exists.
+  instead of being raised.
 - `RiskLevel` (`read`, `write`, `destructive`) is the classification the
   approval layer will consume; `ToolCategory` groups capabilities for
   discovery and the UI.
+- `ToolRegistry` rejects duplicate or malformed tool names, exports
+  model-facing JSON Schema declarations via `export_schemas()`, and runs calls
+  through `dispatch()`. Dispatch validates arguments against the tool's schema
+  and converts unknown tools, invalid arguments, timeouts, and unexpected
+  exceptions into structured failures, so a model-generated call cannot crash
+  the agent loop. Validation errors never echo the rejected input values.
+- Dispatch records a `ToolCallEvent` (tool name, duration, status) when
+  telemetry is enabled; arguments and outputs are never recorded. Approval
+  checks are not part of the registry and will be added by the agent runtime.
 
 `ToolResult.metadata` must not contain secrets, prompts, or raw tool arguments.
 
@@ -148,12 +156,13 @@ tools are not implemented yet:
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (241 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, and tool contract tests) |
+| Test suite | Available (269 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, and tool system tests) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
 | LLM client (`generate`, `generate_stream`, retry, fallback, prompts) | Available |
 | Tool base contract (`BaseTool`, `ToolResult`, risk levels) | Available |
+| Tool registry (`register`, `export_schemas`, `dispatch`, telemetry) | Available |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |

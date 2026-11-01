@@ -21,7 +21,7 @@
 > (model registry, retry, fallback, prompt templates, and streaming). The
 > package installs, `gemini-cli-py --version` works, and CI runs lint, type
 > checks, and the test suite on Python 3.11–3.13. The tool system is in
-> progress: the base tool contract exists, but the registry, built-in tools,
+> progress: the base tool contract and registry exist, but concrete tools,
 > sandbox, agent runtime, interactive CLI, and MCP integration are not
 > implemented yet. The screenshots below are interface concepts, and the
 > feature list describes the intended product scope. The package has not been
