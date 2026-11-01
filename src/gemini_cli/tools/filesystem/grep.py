@@ -14,6 +14,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from gemini_cli.config import Settings
 from gemini_cli.tools.base import BaseTool, RiskLevel, ToolCategory, ToolResult
 from gemini_cli.tools.filesystem._common import (
+    MAX_FILES_SCANNED,
+    SCAN_DEADLINE_SECONDS,
     FileReadError,
     failure,
     iter_files,
@@ -25,8 +27,7 @@ from gemini_cli.tools.filesystem.path_validator import (
     validate_path,
 )
 
-GREP_DEADLINE_SECONDS = 5.0
-MAX_FILES_SCANNED = 2000
+GREP_DEADLINE_SECONDS = SCAN_DEADLINE_SECONDS
 
 
 class GrepParams(BaseModel):

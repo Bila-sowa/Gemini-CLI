@@ -215,6 +215,24 @@ DNS rebinding remains a residual risk: the hostname is resolved for
 validation and again by the HTTP client. Closing that gap fully would require
 pinning the validated address in the TLS connection.
 
+### Code tool
+
+`code_search` (risk `READ`, category `CODE`) searches source files with a
+Python regular expression and returns each match with its surrounding lines.
+
+- Only the first configured allowed root is searched. Without allowed roots the
+  tool refuses to run.
+- By default it looks at common source extensions (`.py`, `.js`, `.ts`, `.go`,
+  `.rs`, `.java`, `.c`, `.cpp`, `.cs`, and similar). `file_extensions` replaces
+  that set; values are normalized, so `py`, `.PY`, and `.py` all mean `.py`.
+- Each result is rendered as `path:line` followed by the match line marked with
+  `>` and up to two context lines above and below.
+- Matches whose context would overlap share a single block instead of repeating
+  lines.
+- The same safety bounds as `grep` apply: skipped generated directories, ignored
+  binary and oversized files, a cap on scanned files, a scan deadline, and a
+  per-line length limit. `max_results` counts blocks, not raw matches.
+
 ## Current status
 
 | Area | Status |
@@ -223,7 +241,7 @@ pinning the validated address in the TLS connection.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (414 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, filesystem tools, shell tool, and web tool) |
+| Test suite | Available (434 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, filesystem tools, shell tool, web tool, and code tool) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -233,6 +251,7 @@ pinning the validated address in the TLS connection.
 | Filesystem tools (`read_file`, `write_file`, `edit_file`, `find_files`, `grep`) | Available |
 | Shell tool (`run_command`) | Registered, execution unavailable until the sandbox backend |
 | Web tool (`fetch_url`) | Available (public HTTP(S), SSRF guards, size limit) |
+| Code tool (`code_search`) | Available (regex search with context) |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |

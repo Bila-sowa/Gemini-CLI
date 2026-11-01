@@ -17,6 +17,11 @@ from gemini_cli.tools.base import ToolResult
 MAX_BINARY_PROBE_BYTES = 8192
 MAX_TEXT_LINE_CHARS = 2000
 
+# Bounds shared by every content scanner (grep, code_search) so a model-supplied
+# regular expression cannot make a search run unbounded.
+SCAN_DEADLINE_SECONDS = 5.0
+MAX_FILES_SCANNED = 2000
+
 # Directories that are large, generated, or version-control internals. Scanning
 # them produces noise and dominates the runtime on real repositories.
 SKIPPED_DIRECTORIES: frozenset[str] = frozenset(
@@ -133,7 +138,9 @@ def truncate_line(line: str) -> str:
 
 __all__ = [
     "MAX_BINARY_PROBE_BYTES",
+    "MAX_FILES_SCANNED",
     "MAX_TEXT_LINE_CHARS",
+    "SCAN_DEADLINE_SECONDS",
     "SKIPPED_DIRECTORIES",
     "FileReadError",
     "failure",
