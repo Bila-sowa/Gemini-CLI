@@ -124,8 +124,8 @@ untrusted, non-spoofable block.
 
 ## Tools
 
-`gemini_cli.tools` defines the shared tool contract and the registry; concrete
-tools are not implemented yet:
+`gemini_cli.tools` defines the shared tool contract, the registry, and the
+filesystem tools:
 
 - `BaseTool` requires a unique `name`, a model-facing `description`, a Pydantic
   `parameters_schema`, a `ToolCategory`, a `RiskLevel`, and an async
@@ -148,6 +148,29 @@ tools are not implemented yet:
 
 `ToolResult.metadata` must not contain secrets, prompts, or raw tool arguments.
 
+### Filesystem tools
+
+The `filesystem/` package provides `read_file`, `write_file`, `edit_file`,
+`find_files`, and `grep`. Each tool receives the shared `Settings` instance and
+uses `validate_path()` from `filesystem/path_validator.py`:
+
+- Paths are resolved before the containment check, so `..` traversal and
+  symlinks pointing outside the roots are rejected.
+- `Settings.allowed_roots` defaults to an empty list, which disables filesystem
+  access entirely. The CLI layer is responsible for adding the working
+  directory.
+- Files larger than `Settings.max_file_size_bytes` and binaries (detected by a
+  NUL byte in the first 8 KB) are rejected. Content must be valid UTF-8.
+- `write_file` and `edit_file` write atomically through a temporary file and
+  `os.replace`, so a failure never leaves a partial file.
+- `read_file` returns lines as `"     1 | text"`. `edit_file` requires
+  `target_content` to occur exactly once in the file and inside the requested
+  `start_line`..`end_line` range.
+- `find_files` and `grep` skip common generated and version-control directories
+  (`.git`, `.venv`, `node_modules`, `__pycache__`, and similar), reject glob
+  patterns that escape the root, and stop after bounded work. `grep` also caps
+  line length and total search time to limit catastrophic regular expressions.
+
 ## Current status
 
 | Area | Status |
@@ -156,13 +179,14 @@ tools are not implemented yet:
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (269 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, and tool system tests) |
+| Test suite | Available (360 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, and filesystem tools) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
 | LLM client (`generate`, `generate_stream`, retry, fallback, prompts) | Available |
 | Tool base contract (`BaseTool`, `ToolResult`, risk levels) | Available |
 | Tool registry (`register`, `export_schemas`, `dispatch`, telemetry) | Available |
+| Filesystem tools (`read_file`, `write_file`, `edit_file`, `find_files`, `grep`) | Available |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |
