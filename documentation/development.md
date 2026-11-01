@@ -171,6 +171,25 @@ uses `validate_path()` from `filesystem/path_validator.py`:
   patterns that escape the root, and stop after bounded work. `grep` also caps
   line length and total search time to limit catastrophic regular expressions.
 
+### Shell tool
+
+`run_command` is registered with `RiskLevel.DESTRUCTIVE` and
+`ToolCategory.SHELL`, but does not execute commands yet: the sandbox backend
+arrives with Phase 6. Until then it returns a structured failure
+(`Shell execution is unavailable: no sandbox backend is configured.`) so the
+agent loop keeps running and the model receives a clear reason.
+
+The tool still validates its inputs:
+
+- `working_directory` must resolve inside `Settings.allowed_roots` and be an
+  existing directory; an empty `allowed_roots` rejects any explicit directory.
+- `command` must not be blank and `timeout_seconds` must be positive.
+- The command string is never repeated in the result, metadata, or logs,
+  because it can contain secrets.
+
+When the sandbox backend is added, the tool will delegate execution to it and
+return a real `ExecutionResult` instead of the unavailable failure.
+
 ## Current status
 
 | Area | Status |
@@ -179,7 +198,7 @@ uses `validate_path()` from `filesystem/path_validator.py`:
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (360 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, and filesystem tools) |
+| Test suite | Available (378 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, filesystem tools, and shell tool) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -187,6 +206,7 @@ uses `validate_path()` from `filesystem/path_validator.py`:
 | Tool base contract (`BaseTool`, `ToolResult`, risk levels) | Available |
 | Tool registry (`register`, `export_schemas`, `dispatch`, telemetry) | Available |
 | Filesystem tools (`read_file`, `write_file`, `edit_file`, `find_files`, `grep`) | Available |
+| Shell tool (`run_command`) | Registered, execution unavailable until the sandbox backend |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |
