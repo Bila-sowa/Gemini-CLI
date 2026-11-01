@@ -122,6 +122,24 @@ emitted only after their arguments are complete. System prompts come from
 `llm/prompts/templates/`; project instructions are appended inside an
 untrusted, non-spoofable block.
 
+## Tools
+
+`gemini_cli.tools` defines the shared tool contract; the registry and concrete
+tools are not implemented yet:
+
+- `BaseTool` requires a unique `name`, a model-facing `description`, a Pydantic
+  `parameters_schema`, a `ToolCategory`, a `RiskLevel`, and an async
+  `execute(params) -> ToolResult`.
+- `ToolResult` carries `success`, `output`, optional `error`, and safe
+  structured `metadata`. Expected failures are returned as a failed result
+  instead of being raised; unexpected exceptions are converted by the registry
+  once it exists.
+- `RiskLevel` (`read`, `write`, `destructive`) is the classification the
+  approval layer will consume; `ToolCategory` groups capabilities for
+  discovery and the UI.
+
+`ToolResult.metadata` must not contain secrets, prompts, or raw tool arguments.
+
 ## Current status
 
 | Area | Status |
@@ -130,11 +148,12 @@ untrusted, non-spoofable block.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (231 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, and LLM client tests) |
+| Test suite | Available (241 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, and tool contract tests) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
 | LLM client (`generate`, `generate_stream`, retry, fallback, prompts) | Available |
+| Tool base contract (`BaseTool`, `ToolResult`, risk levels) | Available |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |

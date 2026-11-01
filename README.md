@@ -20,10 +20,12 @@
 > storage, structured logging with opt-in telemetry, and the Gemini client
 > (model registry, retry, fallback, prompt templates, and streaming). The
 > package installs, `gemini-cli-py --version` works, and CI runs lint, type
-> checks, and the test suite on Python 3.11–3.13. Tools, sandbox, agent
-> runtime, interactive CLI, and MCP integration are not implemented yet. The
-> screenshots below are interface concepts, and the feature list describes the
-> intended product scope. The package has not been published to PyPI yet.
+> checks, and the test suite on Python 3.11–3.13. The tool system is in
+> progress: the base tool contract exists, but the registry, built-in tools,
+> sandbox, agent runtime, interactive CLI, and MCP integration are not
+> implemented yet. The screenshots below are interface concepts, and the
+> feature list describes the intended product scope. The package has not been
+> published to PyPI yet.
 
 ## About
 
