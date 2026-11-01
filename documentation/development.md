@@ -190,6 +190,31 @@ The tool still validates its inputs:
 When the sandbox backend is added, the tool will delegate execution to it and
 return a real `ExecutionResult` instead of the unavailable failure.
 
+### Web tool
+
+`fetch_url` (risk `READ`, category `WEB`) fetches public text resources over
+HTTP(S) with `httpx`. It has no settings dependency and accepts an optional
+`httpx.AsyncBaseTransport` for tests.
+
+- Only `http` and `https` are allowed; `file://`, `data:`, and other schemes
+  are rejected before any request. URLs containing credentials are rejected.
+- The host must resolve exclusively to public addresses. Loopback, private,
+  link-local, reserved, multicast, and shared (`100.64.0.0/10`) addresses are
+  rejected, including `169.254.169.254`. IP literals are checked directly
+  without a DNS lookup. `localhost` and `*.localhost` are rejected by name.
+- Redirects are followed manually (maximum 3), and every hop is re-validated,
+  so a public site cannot redirect the agent into an internal network.
+- Responses larger than `max_bytes` (default 512 KB, maximum 5 MB) are
+  truncated, flagged in `metadata.truncated`, and marked in the returned text.
+- Only text, JSON, XML, and XHTML responses are returned; other content types
+  are rejected. HTTP errors become structured failures.
+- System proxy configuration is ignored (`trust_env=False`) so the address
+  checks cannot be bypassed by an environment variable.
+
+DNS rebinding remains a residual risk: the hostname is resolved for
+validation and again by the HTTP client. Closing that gap fully would require
+pinning the validated address in the TLS connection.
+
 ## Current status
 
 | Area | Status |
@@ -198,7 +223,7 @@ return a real `ExecutionResult` instead of the unavailable failure.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (378 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, filesystem tools, and shell tool) |
+| Test suite | Available (414 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, filesystem tools, shell tool, and web tool) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -207,6 +232,7 @@ return a real `ExecutionResult` instead of the unavailable failure.
 | Tool registry (`register`, `export_schemas`, `dispatch`, telemetry) | Available |
 | Filesystem tools (`read_file`, `write_file`, `edit_file`, `find_files`, `grep`) | Available |
 | Shell tool (`run_command`) | Registered, execution unavailable until the sandbox backend |
+| Web tool (`fetch_url`) | Available (public HTTP(S), SSRF guards, size limit) |
 | Environment template (`.env.example`) | Available |
 | Project instructions template (`GEMINI.md.example`) | Available |
 | CI pipeline (`.github/workflows/ci.yml`) | Available |
