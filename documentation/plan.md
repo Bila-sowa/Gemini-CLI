@@ -439,15 +439,15 @@ runs on every branch push while excluding tag pushes.
 - [x] `.python-version` specifies `3.12`.
 - [x] `uv sync` installs the package and all dependencies without errors.
 - [x] `uv run gemini-cli-py --version` prints the current package version
-  (for example, `v0.1.4`).
+      (for example, `v0.1.4`).
 - [x] `uv run python -m gemini_cli --version` prints the same.
 - [x] `uv run ruff check src/ tests/` passes with zero violations.
 - [x] `uv run ruff format --check src/ tests/` passes.
 - [x] `uv run mypy` passes with zero errors.
 - [x] `uv run pytest` discovers the test directory and passes: the CLI smoke
-  tests plus the module import checks.
+      tests plus the module import checks.
 - [x] All placeholder modules are importable and covered by
-  `tests/unit/test_imports.py`.
+      `tests/unit/test_imports.py`.
 
 ---
 
@@ -683,22 +683,22 @@ __all__ = ["ProjectContext", "Settings", "load_project_context"]
 
 ### 3.5 Tests — `tests/unit/config/`
 
-| Test file | What it validates |
-|-----------|-------------------|
-| `test_defaults.py` | All default constants are of the expected type and within sane ranges. |
-| `test_settings.py` | Settings are created from env vars, missing optional env vars fall back to defaults, invalid role raises `ValidationError`, `api_key` allows empty string, `request_timeout_ms` rejects zero and negative. |
-| `test_project_context.py` | Discovers `GEMINI.md` in the current directory, discovers `AGENTS.md` one level up, returns empty context when nothing found, handles unreadable files gracefully. |
+| Test file                 | What it validates                                                                                                                                                                                          |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_defaults.py`        | All default constants are of the expected type and within sane ranges.                                                                                                                                     |
+| `test_settings.py`        | Settings are created from env vars, missing optional env vars fall back to defaults, invalid role raises `ValidationError`, `api_key` allows empty string, `request_timeout_ms` rejects zero and negative. |
+| `test_project_context.py` | Discovers `GEMINI.md` in the current directory, discovers `AGENTS.md` one level up, returns empty context when nothing found, handles unreadable files gracefully.                                         |
 
 ### 3.6 Acceptance criteria
 
 - [x] `Settings()` can be constructed with no environment variables set (all
-  defaults apply).
+      defaults apply).
 - [x] Setting `GEMINI_MODEL=gemini-2.5-pro` via env correctly overrides the
-  default.
+      default.
 - [x] Invalid role value raises `pydantic.ValidationError`.
 - [x] `load_project_context()` returns combined instructions from found files.
 - [x] `load_project_context()` returns empty `ProjectContext` when no files
-  exist.
+      exist.
 - [x] All tests pass with `uv run pytest tests/unit/config/`.
 
 ---
@@ -786,9 +786,9 @@ class CredentialStoreError(Exception):
 
 ### 4.5 Tests — `tests/unit/auth/`
 
-| Test file | What it validates |
-|-----------|-------------------|
-| `test_api_key.py` | Key resolved from settings, fallback to keyring mock, error when no key available. |
+| Test file                   | What it validates                                                                          |
+| --------------------------- | ------------------------------------------------------------------------------------------ |
+| `test_api_key.py`           | Key resolved from settings, fallback to keyring mock, error when no key available.         |
 | `test_credentials_store.py` | Store/load/delete round-trip with mocked keyring, graceful error when keyring unavailable. |
 
 ### 4.6 Acceptance criteria
@@ -853,18 +853,18 @@ class ToolCallEvent:
 
 ### 5.2 Tests — `tests/unit/telemetry/`
 
-| Test file | What it validates |
-|-----------|-------------------|
+| Test file        | What it validates                                                                                                                                                |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_logger.py` | `configure_logging` sets the correct level, redacting filter strips API keys from messages, telemetry events are suppressed when disabled, JSON output is valid. |
 
 ### 5.3 Acceptance criteria
 
 - [x] `configure_logging("DEBUG", False)` attaches console handler but not
-  telemetry handler.
+      telemetry handler.
 - [x] A log message containing `"api_key=AIzaSyB..."` is output as
-  `"api_key=[REDACTED]"`.
+      `"api_key=[REDACTED]"`.
 - [x] `ModelCallEvent` and `ToolCallEvent` never include prompt content or
-  tool arguments.
+      tool arguments.
 - [x] All tests pass: `uv run pytest tests/unit/telemetry/`.
 
 ---
@@ -914,10 +914,10 @@ MODEL_REGISTRY: dict[str, ModelInfo] = { ... }
 
 Populate the registry from the UI mockups:
 
-| Model name | Tier | Description |
-|-----------|------|-------------|
-| `gemini-2.5-flash` | flash | Best for fast, simple tasks (chat, short text, basic code) |
-| `gemini-2.5-pro` | pro | Best for complex reasoning, long documents, multi-step tasks |
+| Model name         | Tier  | Description                                                  |
+| ------------------ | ----- | ------------------------------------------------------------ |
+| `gemini-2.5-flash` | flash | Best for fast, simple tasks (chat, short text, basic code)   |
+| `gemini-2.5-pro`   | pro   | Best for complex reasoning, long documents, multi-step tasks |
 
 Include helper functions:
 
@@ -1102,12 +1102,12 @@ Create Jinja2 templates:
 
 ### 6.7 Tests — `tests/unit/llm/`
 
-| Test file | What it validates |
-|-----------|-------------------|
-| `test_models.py` | `get_model` returns correct info, unknown model raises error, fallback chain resolves, `list_models` is non-empty. |
-| `test_retry.py` | Retries on 429/500/503 up to max, no retry on 400/401, respects jitter and max delay, final exception is raised after exhaustion. |
-| `test_client.py` | SDK `generate_content` is called with correctly mapped messages and tools, response is mapped to `ModelResponse`, streaming yields expected `StreamEvent` sequence, function call chunks are properly accumulated before execution, fallback is triggered on 5xx, API key is never logged. Uses mocked SDK. |
-| `test_prompts.py` | `build_system_prompt` renders the correct role template, project instructions are delimited, missing template raises clear error. |
+| Test file         | What it validates                                                                                                                                                                                                                                                                                           |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_models.py`  | `get_model` returns correct info, unknown model raises error, fallback chain resolves, `list_models` is non-empty.                                                                                                                                                                                          |
+| `test_retry.py`   | Retries on 429/500/503 up to max, no retry on 400/401, respects jitter and max delay, final exception is raised after exhaustion.                                                                                                                                                                           |
+| `test_client.py`  | SDK `generate_content` is called with correctly mapped messages and tools, response is mapped to `ModelResponse`, streaming yields expected `StreamEvent` sequence, function call chunks are properly accumulated before execution, fallback is triggered on 5xx, API key is never logged. Uses mocked SDK. |
+| `test_prompts.py` | `build_system_prompt` renders the correct role template, project instructions are delimited, missing template raises clear error.                                                                                                                                                                           |
 
 ### 6.8 Acceptance criteria
 
@@ -1237,48 +1237,48 @@ Implement the following tools as separate modules within the package:
 
 #### `read_file.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `read_file` |
-| Risk | `READ` |
-| Parameters | `path: str`, `start_line: int \| None`, `end_line: int \| None` |
-| Behavior | Read a text file from an approved root. Return line-numbered content. Reject binary files, symlinks outside roots, and paths with traversal. |
+| Property   | Value                                                                                                                                        |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name       | `read_file`                                                                                                                                  |
+| Risk       | `READ`                                                                                                                                       |
+| Parameters | `path: str`, `start_line: int \| None`, `end_line: int \| None`                                                                              |
+| Behavior   | Read a text file from an approved root. Return line-numbered content. Reject binary files, symlinks outside roots, and paths with traversal. |
 
 #### `write_file.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `write_file` |
-| Risk | `WRITE` |
-| Parameters | `path: str`, `content: str`, `create_directories: bool = False` |
-| Behavior | Create or overwrite a file. Validate path, size limits, and encoding. |
+| Property   | Value                                                                 |
+| ---------- | --------------------------------------------------------------------- |
+| Name       | `write_file`                                                          |
+| Risk       | `WRITE`                                                               |
+| Parameters | `path: str`, `content: str`, `create_directories: bool = False`       |
+| Behavior   | Create or overwrite a file. Validate path, size limits, and encoding. |
 
 #### `edit_file.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `edit_file` |
-| Risk | `WRITE` |
+| Property   | Value                                                                                              |
+| ---------- | -------------------------------------------------------------------------------------------------- |
+| Name       | `edit_file`                                                                                        |
+| Risk       | `WRITE`                                                                                            |
 | Parameters | `path: str`, `target_content: str`, `replacement_content: str`, `start_line: int`, `end_line: int` |
-| Behavior | Replace a specific block of text within a file. Validate that `target_content` matches exactly. |
+| Behavior   | Replace a specific block of text within a file. Validate that `target_content` matches exactly.    |
 
 #### `find_files.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `find_files` |
-| Risk | `READ` |
+| Property   | Value                                                         |
+| ---------- | ------------------------------------------------------------- |
+| Name       | `find_files`                                                  |
+| Risk       | `READ`                                                        |
 | Parameters | `pattern: str`, `root: str \| None`, `max_results: int = 100` |
-| Behavior | Glob-based file search within approved roots. |
+| Behavior   | Glob-based file search within approved roots.                 |
 
 #### `grep.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `grep` |
-| Risk | `READ` |
-| Parameters | `query: str`, `path: str \| None`, `include_pattern: str \| None`, `max_results: int = 50` |
-| Behavior | Regex search across files in approved roots. Return file paths, line numbers, and matching lines. |
+| Property   | Value                                                                                             |
+| ---------- | ------------------------------------------------------------------------------------------------- |
+| Name       | `grep`                                                                                            |
+| Risk       | `READ`                                                                                            |
+| Parameters | `query: str`, `path: str \| None`, `include_pattern: str \| None`, `max_results: int = 50`        |
+| Behavior   | Regex search across files in approved roots. Return file paths, line numbers, and matching lines. |
 
 #### Path validation — `path_validator.py`
 
@@ -1305,59 +1305,59 @@ def validate_path(
 
 #### `run_command.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `run_command` |
-| Risk | `DESTRUCTIVE` |
-| Parameters | `command: str`, `working_directory: str \| None`, `timeout_seconds: int \| None` |
-| Behavior | Delegate execution to the sandbox backend (Phase 6). Until the sandbox is implemented, this tool returns a `ToolResult` with `success=False` and an explanation. |
+| Property   | Value                                                                                                                                                            |
+| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name       | `run_command`                                                                                                                                                    |
+| Risk       | `DESTRUCTIVE`                                                                                                                                                    |
+| Parameters | `command: str`, `working_directory: str \| None`, `timeout_seconds: int \| None`                                                                                 |
+| Behavior   | Delegate execution to the sandbox backend (Phase 6). Until the sandbox is implemented, this tool returns a `ToolResult` with `success=False` and an explanation. |
 
 ### 7.5 Web tools — `src/gemini_cli/tools/web/`
 
 #### `fetch_url.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `fetch_url` |
-| Risk | `READ` |
-| Parameters | `url: str`, `max_bytes: int = 524288` |
-| Behavior | Fetch a URL via `httpx`, validate the URL scheme (http/https only), enforce size limit, return text content. Reject private/internal IPs to prevent SSRF. |
+| Property   | Value                                                                                                                                                     |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Name       | `fetch_url`                                                                                                                                               |
+| Risk       | `READ`                                                                                                                                                    |
+| Parameters | `url: str`, `max_bytes: int = 524288`                                                                                                                     |
+| Behavior   | Fetch a URL via `httpx`, validate the URL scheme (http/https only), enforce size limit, return text content. Reject private/internal IPs to prevent SSRF. |
 
 ### 7.6 Code tools — `src/gemini_cli/tools/code/`
 
 #### `code_search.py`
 
-| Property | Value |
-|----------|-------|
-| Name | `code_search` |
-| Risk | `READ` |
-| Parameters | `query: str`, `file_extensions: list[str] \| None`, `max_results: int = 30` |
-| Behavior | Focused search across source files using regex. Similar to `grep` but defaults to source-code extensions and formats results with surrounding context lines. |
+| Property   | Value                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Name       | `code_search`                                                                                                                                                |
+| Risk       | `READ`                                                                                                                                                       |
+| Parameters | `query: str`, `file_extensions: list[str] \| None`, `max_results: int = 30`                                                                                  |
+| Behavior   | Focused search across source files using regex. Similar to `grep` but defaults to source-code extensions and formats results with surrounding context lines. |
 
 ### 7.7 Tests — `tests/unit/tools/`
 
-| Test file | What it validates |
-|-----------|-------------------|
-| `test_base.py` | `ToolResult` construction, `RiskLevel` enum values. |
-| `test_registry.py` | Registration, duplicate-name rejection, lookup, `export_schemas` produces valid JSON Schema, `dispatch` validates args and returns result. |
-| `test_path_validator.py` | Allowed paths pass, `..` traversal rejected, symlinks outside roots rejected, non-existent path with `must_exist=True` raises. |
-| `test_read_file.py` | Reads file content, respects line ranges, rejects binary, rejects path outside roots. |
-| `test_write_file.py` | Creates file, overwrites existing, rejects oversized content, rejects path outside roots. |
-| `test_edit_file.py` | Replaces target content, rejects when target not found, rejects when multiple matches. |
-| `test_find_files.py` | Glob patterns work, respects max results, restricted to roots. |
-| `test_grep.py` | Regex search finds matches, handles invalid regex, respects max results. |
-| `test_fetch_url.py` | Fetches mocked URL, rejects `file://`, rejects private IPs, enforces size limit. |
+| Test file                | What it validates                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `test_base.py`           | `ToolResult` construction, `RiskLevel` enum values.                                                                                        |
+| `test_registry.py`       | Registration, duplicate-name rejection, lookup, `export_schemas` produces valid JSON Schema, `dispatch` validates args and returns result. |
+| `test_path_validator.py` | Allowed paths pass, `..` traversal rejected, symlinks outside roots rejected, non-existent path with `must_exist=True` raises.             |
+| `test_read_file.py`      | Reads file content, respects line ranges, rejects binary, rejects path outside roots.                                                      |
+| `test_write_file.py`     | Creates file, overwrites existing, rejects oversized content, rejects path outside roots.                                                  |
+| `test_edit_file.py`      | Replaces target content, rejects when target not found, rejects when multiple matches.                                                     |
+| `test_find_files.py`     | Glob patterns work, respects max results, restricted to roots.                                                                             |
+| `test_grep.py`           | Regex search finds matches, handles invalid regex, respects max results.                                                                   |
+| `test_fetch_url.py`      | Fetches mocked URL, rejects `file://`, rejects private IPs, enforces size limit.                                                           |
 
 ### 7.8 Acceptance criteria
 
 - [x] All tools can be registered in `ToolRegistry` without name collisions.
 - [x] `export_schemas()` returns valid JSON Schema for every registered tool.
 - [x] `dispatch("read_file", {"path": "/etc/passwd"})` is rejected when
-  `/etc/` is not in `allowed_roots`.
+      `/etc/` is not in `allowed_roots`.
 - [x] Path traversal via `../../etc/passwd` is detected and rejected.
 - [x] `fetch_url` with a `file:///` URL is rejected.
 - [x] `run_command` returns a "not available" result until sandbox is
-  implemented.
+      implemented.
 - [x] All tests pass: `uv run pytest tests/unit/tools/`.
 
 ---
@@ -1492,23 +1492,23 @@ as `DENIED`.
 
 ### 8.5 Tests — `tests/unit/sandbox/`
 
-| Test file | What it validates |
-|-----------|-------------------|
-| `test_base.py` | `ExecutionResult` construction and immutability, protocol compatibility, `SandboxError` contract. |
-| `test_subprocess_backend.py` | Command executes and returns stdout/stderr, timeout kills process, output truncated at limit, working-directory respected, secrets not inherited. |
-| `test_docker_backend.py` | Availability probing and caching, restricted `docker run` arguments, read-only/network defaults, timeout cleanup, subprocess fallback. |
-| `test_approval.py` | READ auto-approved, DESTRUCTIVE requires callback, denied callback returns `DENIED`, manager raises when no callback configured for destructive action, safe details/logging. |
+| Test file                    | What it validates                                                                                                                                                             |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `test_base.py`               | `ExecutionResult` construction and immutability, protocol compatibility, `SandboxError` contract.                                                                             |
+| `test_subprocess_backend.py` | Command executes and returns stdout/stderr, timeout kills process, output truncated at limit, working-directory respected, secrets not inherited.                             |
+| `test_docker_backend.py`     | Availability probing and caching, restricted `docker run` arguments, read-only/network defaults, timeout cleanup, subprocess fallback.                                        |
+| `test_approval.py`           | READ auto-approved, DESTRUCTIVE requires callback, denied callback returns `DENIED`, manager raises when no callback configured for destructive action, safe details/logging. |
 
 ### 8.6 Acceptance criteria
 
 - [x] Subprocess backend executes `echo hello` and returns
-  `ExecutionResult(exit_code=0, stdout="hello\n", ...)`.
+      `ExecutionResult(exit_code=0, stdout="hello\n", ...)`.
 - [x] A command exceeding `timeout_seconds` returns `timed_out=True`.
 - [x] Output exceeding `max_output_bytes` is truncated.
 - [x] `ApprovalManager` auto-approves `read_file` but requires approval for
-  `run_command`.
+      `run_command`.
 - [x] Docker backend returns `is_available() == False` when Docker is not
-  installed.
+      installed.
 - [x] All tests pass: `uv run pytest tests/unit/sandbox/`.
 
 ---
@@ -1553,6 +1553,12 @@ class Session:
     def get_history(self) -> list[Message]: ...
     def update_usage(self, usage: UsageInfo) -> None: ...
 ```
+
+The implementation also adds `record_iteration()`, `total_tokens`, and
+`last_message()`. `add_tool_result()` resolves the tool name from the call id
+recorded earlier, because Gemini requires a function name on every tool
+response. `get_history()` returns a copy so a caller cannot mutate the session
+while the agent iterates.
 
 ### 9.2 Context manager — `src/gemini_cli/core/context_manager.py`
 
@@ -1613,12 +1619,19 @@ class QuotaTracker:
 
     Calculates:
     - 5-hour sliding window quota consumption and remaining time.
-    - Weekly rolling quota consumption and reset timestamp (e.g. Monday 09:00).
+    - Weekly rolling quota consumption and remaining time.
     - Status for the header area (``quota: 100k/200k tokens``) and the
       ``/quota`` panel.
     """
 
-    def __init__(self, storage_path: Path | None = None) -> None: ...
+    def __init__(
+        self,
+        storage_path: Path | None = None,
+        *,
+        five_hour_limit: int = 200_000,
+        weekly_limit: int = 1_000_000,
+        now: Callable[[], datetime] | None = None,
+    ) -> None: ...
 
     def record_usage(self, model: str, input_tokens: int, output_tokens: int) -> None: ...
 
@@ -1626,6 +1639,13 @@ class QuotaTracker:
 
     def get_weekly_status(self) -> QuotaWindowStatus: ...
 ```
+
+Both windows are rolling: the weekly window is the last seven days, not a
+calendar-week reset. The default limits are local policy derived from published
+free-tier averages (roughly 250k input tokens per minute and 250 requests per
+day on Gemini 2.5 Flash); they are configurable through
+`Settings.quota_5h_token_limit` and `Settings.quota_weekly_token_limit`.
+`now` is injectable for deterministic tests.
 
 ### 9.4 Streaming adapter — `src/gemini_cli/core/streaming.py`
 
@@ -1658,6 +1678,18 @@ class AgentEvent:
 Both the interactive TUI and the non-interactive `run` command consume
 `AgentEvent` objects. They never import the Gemini SDK.
 
+The implementation uses `StrEnum` instead of `str, Enum`, makes `AgentEvent`
+frozen, and adds `from_stream_event()`, `tool_call_end()`, `done_event()`, and
+`error_event()` helpers. Text deltas become `TEXT_CHUNK` (or `THINKING` when
+the provider marks them as reasoning), completed tool calls become
+`TOOL_CALL_START`, and stream errors become `ERROR`. Usage and completion
+markers stay inside the agent loop.
+
+When one model turn requests several tools, their `TOOL_CALL_START` events are
+emitted as the calls are announced, followed by one `TOOL_CALL_END` per
+execution. A single tool call still produces the documented
+`TOOL_CALL_START` → `TOOL_CALL_END` order.
+
 ### 9.5 Agent loop — `src/gemini_cli/core/agent.py`
 
 This is the central orchestrator.
@@ -1675,7 +1707,7 @@ class Agent:
 
     def __init__(
         self,
-        llm_client: GeminiClient,
+        llm_client: ChatClient,
         tool_registry: ToolRegistry,
         approval_manager: ApprovalManager,
         context_manager: ContextManager,
@@ -1711,53 +1743,72 @@ class Agent:
         """
 ```
 
+The agent depends on a small `ChatClient` protocol with
+`generate_stream(...)` instead of importing `GeminiClient`; the concrete client
+satisfies it structurally and tests use the fakes from `tests/fixtures/`.
+
+Every requested tool call receives exactly one observation — including
+unknown, denied, and approval-unavailable calls — because the next Gemini
+request is invalid when a call has no response. `ApprovalUnavailableError` is
+treated as a denial, not a crash, and text is not replayed into the assistant
+message when the stream fails.
+
 **Guard rails enforced in the loop:**
 
-| Guard | Default | Behavior |
-|-------|---------|----------|
-| Max iterations | 25 | Stop loop, yield error event. |
-| Max retries per LLM call | 3 | Handled by `retry.py`. |
-| Max output tokens | 8192 | Passed to SDK. |
+| Guard                        | Default      | Behavior                              |
+| ---------------------------- | ------------ | ------------------------------------- |
+| Max iterations               | 25           | Stop loop, yield error event.         |
+| Max retries per LLM call     | 3            | Handled by `retry.py`.                |
+| Max output tokens            | 8192         | Passed to SDK.                        |
 | Max total tokens per session | Configurable | Tracked via `session.total_*_tokens`. |
-| Tool execution timeout | 30s | Handled by sandbox/tool. |
+| Tool execution timeout       | 30s          | Handled by sandbox/tool.              |
 
 ### 9.6 Tests
 
-| Test file | What it validates |
-|-----------|-------------------|
-| `tests/unit/core/test_session.py` | Message CRUD, usage tracking, history retrieval. |
-| `tests/unit/core/test_context_manager.py` | Messages are trimmed, recent messages preserved, unresolved tool calls preserved, empty history returns empty. |
-| `tests/unit/core/test_quota_tracker.py` | Local quota persistence, sliding 5-hour window calculation, weekly window reset timestamp, percentage calculation. |
-| `tests/unit/core/test_streaming.py` | `AgentEvent` construction and type discrimination. |
-| `tests/integration/test_agent_loop.py` | Full loop with fake LLM (returns text), full loop with fake LLM (returns tool call → observation → final text), iteration limit stops the loop, denied tool call is reported and loop continues, multiple sequential tool calls. |
+| Test file                                 | What it validates                                                                                                                                                                                                                                                                                          |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tests/unit/core/test_session.py`         | Message CRUD, tool-call/observation pairing, usage tracking, history retrieval, observation truncation.                                                                                                                                                                                                    |
+| `tests/unit/core/test_context_manager.py` | Messages are trimmed, recent messages preserved, tool-call groups never split, history starts with a user turn, input is not mutated.                                                                                                                                                                      |
+| `tests/unit/core/test_quota_tracker.py`   | Local quota persistence, atomic private writes, sliding 5-hour and 7-day windows, percentage calculation, corrupt-state tolerance.                                                                                                                                                                         |
+| `tests/unit/core/test_streaming.py`       | `AgentEvent` construction, immutability, and mapping of text, thinking, tool, error, usage, and done events.                                                                                                                                                                                               |
+| `tests/integration/test_agent_loop.py`    | Full loop with fake LLM (returns text), full loop with fake LLM (returns tool call → observation → final text), iteration limit stops the loop, denied tool call is reported and loop continues, multiple tool calls in one turn, unknown tool and tool failure observations, LLM errors, approval policy. |
 
 **Fake implementations for integration tests:**
 
 ```python
 # tests/fixtures/fake_llm.py
 class FakeLLMClient:
-    """Returns pre-configured responses in sequence."""
-    def __init__(self, responses: list[ModelResponse]) -> None: ...
+    """Returns scripted stream events in sequence."""
+    def __init__(
+        self,
+        responses: Sequence[Sequence[StreamEvent] | BaseException],
+    ) -> None: ...
 
 # tests/fixtures/fake_tools.py
 class FakeTool(BaseTool):
-    """Returns a pre-configured ToolResult."""
-    def __init__(self, name: str, result: ToolResult) -> None: ...
+    """Records calls and returns a pre-configured ToolResult."""
+    def __init__(
+        self,
+        name: str = "fake_tool",
+        *,
+        result: ToolResult | None = None,
+        risk_level: RiskLevel = RiskLevel.READ,
+    ) -> None: ...
 ```
 
 ### 9.7 Acceptance criteria
 
-- [ ] Agent processes a simple text query (no tools) and yields
-  `TEXT_CHUNK` → `DONE`.
-- [ ] Agent processes a query requiring one tool call: yields
-  `TOOL_CALL_START` → `TOOL_CALL_END` → `TEXT_CHUNK` → `DONE`.
-- [ ] Agent stops at `max_agent_iterations` and yields `ERROR` → `DONE`.
-- [ ] Denied tool call produces an observation but does not crash the loop.
-- [ ] Context manager trims old messages when history is too long.
-- [ ] `QuotaTracker` accurately accumulates tokens and calculates 5h/weekly windows.
-- [ ] Session tracks cumulative token usage accurately.
-- [ ] No component imports from `cli/` or `tui/`.
-- [ ] All tests pass: `uv run pytest tests/unit/core/ tests/integration/`.
+- [x] Agent processes a simple text query (no tools) and yields
+      `TEXT_CHUNK` → `DONE`.
+- [x] Agent processes a query requiring one tool call: yields
+      `TOOL_CALL_START` → `TOOL_CALL_END` → `TEXT_CHUNK` → `DONE`.
+- [x] Agent stops at `max_agent_iterations` and yields `ERROR` → `DONE`.
+- [x] Denied tool call produces an observation but does not crash the loop.
+- [x] Context manager trims old messages when history is too long.
+- [x] `QuotaTracker` accurately accumulates tokens and calculates 5h/weekly windows.
+- [x] Session tracks cumulative token usage accurately.
+- [x] No component imports from `cli/` or `tui/`.
+- [x] All tests pass: `uv run pytest tests/unit/core/ tests/integration/`.
 
 ---
 
@@ -1824,18 +1875,18 @@ def run(
 
 ### 10.4 Auth commands — `src/gemini_cli/cli/commands/auth.py`
 
-| Command | Behavior |
-|---------|----------|
-| `gemini-cli-py login` | Prompt for API key, store in keyring, verify with a test API call. |
-| `gemini-cli-py logout` | Remove stored credentials from keyring. |
-| `gemini-cli-py auth status` | Show authentication method and validity. |
+| Command                     | Behavior                                                           |
+| --------------------------- | ------------------------------------------------------------------ |
+| `gemini-cli-py login`       | Prompt for API key, store in keyring, verify with a test API call. |
+| `gemini-cli-py logout`      | Remove stored credentials from keyring.                            |
+| `gemini-cli-py auth status` | Show authentication method and validity.                           |
 
 ### 10.5 Config commands — `src/gemini_cli/cli/commands/config.py`
 
-| Command | Behavior |
-|---------|----------|
-| `gemini-cli-py config show` | Print all resolved settings (redact API key). |
-| `gemini-cli-py config set <key> <value>` | Write to project or global config file. |
+| Command                                  | Behavior                                      |
+| ---------------------------------------- | --------------------------------------------- |
+| `gemini-cli-py config show`              | Print all resolved settings (redact API key). |
+| `gemini-cli-py config set <key> <value>` | Write to project or global config file.       |
 
 ### 10.6 TUI / REPL — `src/gemini_cli/cli/tui/repl.py`
 
@@ -1844,6 +1895,7 @@ autocompletion, and arrow-driven selection menus) with **`Rich`** (for visual
 styling, markdown rendering, headers, borders, and progress bars).
 
 **Architecture of REPL:**
+
 1. **Input Management:** Uses `prompt_toolkit.PromptSession` with:
    - `WordCompleter` for slash commands (`/role`, `/model`, `/reset`, `/quota`, `/auth`, `/exit`, `/clear`, `/help`).
    - Persistent command history.
@@ -1853,7 +1905,7 @@ styling, markdown rendering, headers, borders, and progress bars).
    - Up/Down arrow navigation to move selector indicator `>`.
    - `Enter` to confirm selected item.
    - `Escape` to cancel selection and return to REPL without changes.
-   Used for: Model Selection (`Terminal-4.png`), Assistant Role Selection (`Terminal-6.png`), and Authentication Method Selection (`Terminal-5.png`).
+     Used for: Model Selection (`Terminal-4.png`), Assistant Role Selection (`Terminal-6.png`), and Authentication Method Selection (`Terminal-5.png`).
 3. **Output & Streaming Rendering:** Uses `rich.console.Console`:
    - Renders header area with version, model, and active quota tokens.
    - Streams assistant response text in real-time (`✦:` prefix).
@@ -1889,16 +1941,16 @@ role: Gemini Basic (change role: /role)
 
 **Slash commands** detected in user input:
 
-| Command | Action |
-|---------|--------|
-| `/role` | Open role selection prompt (Basic, Code, Creator, Analyser, Poet). |
-| `/model` | Open model selection prompt with descriptions. |
-| `/reset` | Reset API key (re-prompt or clear keyring). |
-| `/quota` | Show quota panel with progress bars (5h limit, weekly). |
-| `/auth` | Show authentication method selection. |
-| `/exit`, `/quit`, Escape | Exit the REPL. |
-| `/clear` | Clear the conversation. |
-| `/help` | Show available commands. |
+| Command                  | Action                                                             |
+| ------------------------ | ------------------------------------------------------------------ |
+| `/role`                  | Open role selection prompt (Basic, Code, Creator, Analyser, Poet). |
+| `/model`                 | Open model selection prompt with descriptions.                     |
+| `/reset`                 | Reset API key (re-prompt or clear keyring).                        |
+| `/quota`                 | Show quota panel with progress bars (5h limit, weekly).            |
+| `/auth`                  | Show authentication method selection.                              |
+| `/exit`, `/quit`, Escape | Exit the REPL.                                                     |
+| `/clear`                 | Clear the conversation.                                            |
+| `/help`                  | Show available commands.                                           |
 
 **Selection prompts** (from mockups):
 
@@ -1968,12 +2020,12 @@ DEFAULT_THEME = Theme(
 
 ### 10.8 Tests — `tests/unit/cli/`
 
-| Test file | What it validates |
-|-----------|-------------------|
-| `test_app.py` | `--version` prints version and exits 0, `--help` prints usage, unknown command exits non-zero. |
-| `test_run.py` | One-shot execution with mocked agent returns expected output. |
-| `test_slash_commands.py` | Slash command detection: `/role`, `/model`, `/help`, unknown slash command. |
-| `test_repl.py` | Interactive menu selection callback, escape key abort, prompt completion word provider. |
+| Test file                | What it validates                                                                              |
+| ------------------------ | ---------------------------------------------------------------------------------------------- |
+| `test_app.py`            | `--version` prints version and exits 0, `--help` prints usage, unknown command exits non-zero. |
+| `test_run.py`            | One-shot execution with mocked agent returns expected output.                                  |
+| `test_slash_commands.py` | Slash command detection: `/role`, `/model`, `/help`, unknown slash command.                    |
+| `test_repl.py`           | Interactive menu selection callback, escape key abort, prompt completion word provider.        |
 
 ### 10.9 Acceptance criteria
 
@@ -2081,23 +2133,23 @@ as built-in tools.
 
 ### 11.5 Production polish
 
-| Item | Description |
-|------|-------------|
-| End-to-end tests | `tests/e2e/` — test the full CLI with a real (or mocked) Gemini API call, tool execution, and output verification. Mark as `@pytest.mark.integration`. |
-| Error handling audit | Review every `except` block. Ensure no bare `except:`, no swallowed exceptions, and structured error reporting. |
-| Dependency audit | Run `uv pip audit` or equivalent. Check for known vulnerabilities. |
-| Documentation | `documentation/tools.md` — document every built-in tool, its parameters, and expected behavior. |
-| `py.typed` marker | Add `src/gemini_cli/py.typed` for PEP 561 compliance. |
-| Package metadata | Verify `pyproject.toml` classifiers, URLs, and author metadata. |
-| Release workflow | `.github/workflows/release.yml` — build and publish to PyPI on tag push. |
+| Item                 | Description                                                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| End-to-end tests     | `tests/e2e/` — test the full CLI with a real (or mocked) Gemini API call, tool execution, and output verification. Mark as `@pytest.mark.integration`. |
+| Error handling audit | Review every `except` block. Ensure no bare `except:`, no swallowed exceptions, and structured error reporting.                                        |
+| Dependency audit     | Run `uv pip audit` or equivalent. Check for known vulnerabilities.                                                                                     |
+| Documentation        | `documentation/tools.md` — document every built-in tool, its parameters, and expected behavior.                                                        |
+| `py.typed` marker    | Add `src/gemini_cli/py.typed` for PEP 561 compliance.                                                                                                  |
+| Package metadata     | Verify `pyproject.toml` classifiers, URLs, and author metadata.                                                                                        |
+| Release workflow     | `.github/workflows/release.yml` — build and publish to PyPI on tag push.                                                                               |
 
 ### 11.6 Tests — `tests/unit/mcp/`
 
-| Test file | What it validates |
-|-----------|-------------------|
+| Test file               | What it validates                                                                                   |
+| ----------------------- | --------------------------------------------------------------------------------------------------- |
 | `test_server_config.py` | Valid stdio config, valid SSE config, missing command for stdio raises, missing URL for SSE raises. |
-| `test_client.py` | Connect/disconnect lifecycle with mocked transport, tool listing, tool call delegation. |
-| `test_discovery.py` | Tools are registered, naming conflicts are resolved with prefix, disabled servers are skipped. |
+| `test_client.py`        | Connect/disconnect lifecycle with mocked transport, tool listing, tool call delegation.             |
+| `test_discovery.py`     | Tools are registered, naming conflicts are resolved with prefix, disabled servers are skipped.      |
 
 ### 11.7 Acceptance criteria
 
@@ -2109,7 +2161,7 @@ as built-in tools.
 - [ ] `gemini-cli-py mcp add` adds a new server configuration.
 - [ ] All existing tests continue to pass.
 - [ ] `uv run ruff check`, `uv run ruff format --check`, and `uv run mypy`
-  all pass.
+      all pass.
 - [ ] `uv run pytest --cov` reports ≥80% coverage on `src/gemini_cli/`.
 
 ---
@@ -2119,13 +2171,13 @@ as built-in tools.
 These are not part of the initial implementation plan but are documented as
 intended future work:
 
-| Extension | Description |
-|-----------|-------------|
-| **RAG** | Index project files, vector-based retrieval, citation support. Isolated by project, respects filesystem boundaries. |
-| **Google OAuth** | Full OAuth 2.0 flow for Google-authenticated Gemini access. |
-| **Textual TUI** | Replace or augment Rich-based REPL with a full Textual application for richer interactivity. |
-| **Plugin system** | User-defined tools loaded from local Python modules. |
-| **Session persistence** | Save and resume conversations to/from disk. |
-| **Multi-model support** | Support non-Gemini models (OpenAI, Anthropic) behind the same `LLMClient` interface. |
-| **Quota tracking** | Real-time token and rate-limit tracking with visual feedback (as shown in mockups). |
-| **Auto-update** | Self-update mechanism via `uv tool upgrade`. |
+| Extension               | Description                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **RAG**                 | Index project files, vector-based retrieval, citation support. Isolated by project, respects filesystem boundaries. |
+| **Google OAuth**        | Full OAuth 2.0 flow for Google-authenticated Gemini access.                                                         |
+| **Textual TUI**         | Replace or augment Rich-based REPL with a full Textual application for richer interactivity.                        |
+| **Plugin system**       | User-defined tools loaded from local Python modules.                                                                |
+| **Session persistence** | Save and resume conversations to/from disk.                                                                         |
+| **Multi-model support** | Support non-Gemini models (OpenAI, Anthropic) behind the same `LLMClient` interface.                                |
+| **Quota tracking**      | Real-time token and rate-limit tracking with visual feedback (as shown in mockups).                                 |
+| **Auto-update**         | Self-update mechanism via `uv tool upgrade`.                                                                        |
