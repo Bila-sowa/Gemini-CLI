@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -99,7 +100,8 @@ def test_help_does_not_resolve_credentials(
     assert calls == []
 
 
-def test_config_show_stub_does_not_resolve_credentials(
+def test_config_show_does_not_resolve_credentials(
+    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[Settings] = []
@@ -109,10 +111,11 @@ def test_config_show_stub_does_not_resolve_credentials(
         raise AssertionError("credentials must not be resolved for config show")
 
     monkeypatch.setattr("gemini_cli.cli.runtime.resolve_api_key", fake_resolve)
+    monkeypatch.chdir(tmp_path)
 
     result = runner.invoke(app, ["config", "show"])
 
-    assert result.exit_code == 1
+    assert result.exit_code == 0
     assert calls == []
 
 
@@ -395,3 +398,137 @@ def test_status_reports_missing_credentials(
 
     assert result.exit_code == 1
     assert "not configured" in result.stdout
+
+
+def test_config_show_redacts_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GEMINI_API_KEY", "top-secret")
+
+    result = runner.invoke(app, ["config", "show"])
+
+    assert result.exit_code == 0
+    assert "api_key: set" in result.stdout
+    assert "top-secret" not in result.stdout
+    assert "model: gemini-2.5-flash" in result.stdout
+
+
+def test_config_show_reports_missing_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "show"])
+
+    assert result.exit_code == 0
+    assert "api_key: not set" in result.stdout
+
+
+def test_config_set_writes_project_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "set", "model", "gemini-2.5-pro"])
+
+    assert result.exit_code == 0
+    document = tomllib.loads((tmp_path / ".gemini-cli.toml").read_text())
+    assert document["model"] == "gemini-2.5-pro"
+
+
+def test_config_set_preserves_existing_keys(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    runner.invoke(app, ["config", "set", "model", "gemini-2.5-pro"])
+    result = runner.invoke(
+        app,
+        ["config", "set", "telemetry_enabled", "true"],
+    )
+
+    assert result.exit_code == 0
+    document = tomllib.loads((tmp_path / ".gemini-cli.toml").read_text())
+    assert document["model"] == "gemini-2.5-pro"
+    assert document["telemetry_enabled"] is True
+
+
+def test_config_set_writes_global_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["config", "set", "role", "code", "--global"],
+    )
+
+    assert result.exit_code == 0
+    path = tmp_path / ".gemini-cli" / "config.toml"
+    document = tomllib.loads(path.read_text())
+    assert document["role"] == "code"
+
+
+def test_config_set_rejects_blocked_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "set", "api_key", "secret"])
+
+    assert result.exit_code == 1
+
+
+def test_config_set_rejects_unknown_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "set", "not_a_setting", "x"])
+
+    assert result.exit_code == 1
+
+
+def test_config_set_rejects_invalid_integer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "set", "retry_attempts", "many"])
+
+    assert result.exit_code == 1
+
+
+def test_config_set_rejects_invalid_role(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "set", "role", "wizard"])
+
+    assert result.exit_code == 1
+
+
+def test_config_set_rejects_invalid_boolean(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        app,
+        ["config", "set", "telemetry_enabled", "maybe"],
+    )
+
+    assert result.exit_code == 1
