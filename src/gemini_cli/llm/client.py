@@ -410,6 +410,23 @@ class GeminiClient:
             self._client = _create_client(self._settings, self._api_key)
         return self._client
 
+    async def verify(self) -> None:
+        """Check that the configured credentials can reach the API.
+
+        Lists a single model instead of generating content, so verification is
+        cheap and does not consume output tokens.
+
+        Raises:
+            LLMError: if the request fails.
+        """
+        try:
+            async with asyncio.timeout(self._timeout_seconds()):
+                await self._sdk_client().aio.models.list(
+                    config=cast("Any", {"page_size": 1}),
+                )
+        except Exception as exc:
+            raise _to_llm_error(exc) from exc
+
     def _retry_policy(self) -> RetryPolicy:
         return RetryPolicy(max_attempts=max(1, self._settings.retry_attempts))
 

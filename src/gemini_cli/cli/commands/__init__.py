@@ -1,1 +1,1 @@
-"""CLI subcommand modules (implemented in Phase 8)."""
+"""CLI command implementations."""

@@ -15,15 +15,17 @@
 </div>
 
 > [!NOTE]
-> **Project status:** Phases 0–7 are complete: project foundation,
+> **Project status:** Phases 0–8 are complete: project foundation,
 > configuration and project context, API-key authentication with OS keyring
 > storage, structured logging with opt-in telemetry, the Gemini client (model
 > registry, retry, fallback, prompt templates, and streaming), the tool system
-> with filesystem, web, code, and shell tools, and the sandbox with a
-> fail-closed approval manager. Phase 7 adds the agent core: conversation
-> sessions, context-window trimming, local quota accounting, a stable event
-> stream, and the streaming think-act-observe loop that executes approved tools
-> and records observations. The interactive CLI and MCP integration are not
+> with filesystem, web, code, and shell tools, the sandbox with a fail-closed
+> approval manager, and the agent core with sessions, context trimming, local
+> quota accounting, and the streaming think-act-observe loop. Phase 8 adds the
+> terminal interface: `chat`, `run`, `login`, `logout`, `auth status`, and
+> `config show/set`, with a full-screen Textual UI, ASCII wordmark, streaming
+> output, modal approval and selection screens, a quota panel, dark/light
+> themes, and a plain line fallback for pipes and CI. MCP integration is not
 > implemented yet. The package installs, `gemini-cli-py --version` works, and CI
 > runs lint, type checks, and the test suite on Python 3.11–3.13. The
 > screenshots below are interface concepts, and the feature list describes the
@@ -138,9 +140,9 @@ design goals and should not yet be interpreted as released functionality.
 
 ### Terminal experience
 
-- Interactive REPL with streaming model responses.
+- Full-screen terminal UI with streaming model responses.
 - One-shot, non-interactive execution for scripts and CI workflows.
-- Rich or Textual-based terminal UI with themes and keyboard navigation.
+- Textual-based terminal UI with dark/light themes and keyboard navigation.
 - Visible version, active model, role, and quota information.
 - Command completion for actions such as configuration, role switching, and
   credential reset.
@@ -258,7 +260,7 @@ are:
 | Runtime                 | Python 3.11+                            |
 | Model API               | Gemini through `google-genai`           |
 | CLI                     | Typer or Click                          |
-| Terminal UI             | Rich or Textual                         |
+| Terminal UI             | Textual (Rich renderables)              |
 | Validation and settings | Pydantic and Pydantic Settings          |
 | Prompt templates        | Jinja                                   |
 | Tool interoperability   | MCP over stdio and SSE                  |
