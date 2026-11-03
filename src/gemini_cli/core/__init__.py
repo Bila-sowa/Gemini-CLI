@@ -1,5 +1,6 @@
 """Core agent runtime — public surface."""
 
+from gemini_cli.core.agent import Agent, ChatClient
 from gemini_cli.core.context_manager import (
     ContextManager,
     estimate_message_tokens,
@@ -22,8 +23,10 @@ from gemini_cli.core.streaming import (
 )
 
 __all__ = [
+    "Agent",
     "AgentEvent",
     "AgentEventType",
+    "ChatClient",
     "ContextManager",
     "QuotaTracker",
     "QuotaWindowStatus",
