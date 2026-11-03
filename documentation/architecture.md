@@ -159,12 +159,20 @@ The `cli` package is an adapter between users and the application core:
 - `commands/auth.py` manages login, logout, and status;
 - `commands/config.py` reads and updates user-facing configuration;
 - `commands/mcp.py` will manage configured MCP servers in Phase 9;
-- `tui/repl.py` renders the interactive terminal interface;
-- `tui/themes.py` keeps presentation settings separate from behavior.
+- `tui/app.py` is the full-screen Textual application: ASCII wordmark, status
+  bar, scrollable conversation, prompt, quota panel, and role footer;
+- `tui/widgets.py` contains the logo, status bar, message view, quota panel,
+  approval modal, and selection menu;
+- `tui/repl.py` is the plain line fallback for pipes, CI, and `--no-tui`;
+- `tui/themes.py` keeps the dark and light palettes separate from behavior.
+
+The TUI streams agent events into the conversation, opens a modal confirmation
+for sensitive tool calls, and uses modal menus for role, model, and
+authentication selection. A non-TTY environment falls back to line mode.
 
 Commands that do not need the agent — help, version, auth, and config — never
 resolve credentials. The one-shot `run` command uses no approval callback, so
-destructive tools stay denied outside the interactive REPL.
+destructive tools stay denied outside the interactive UI.
 
 CLI modules should validate and normalize input, call application services,
 and format output. They should not implement agent reasoning, credential

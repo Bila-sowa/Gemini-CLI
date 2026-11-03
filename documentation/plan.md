@@ -1892,6 +1892,10 @@ def run(
 
 ### 10.6 TUI / REPL — `src/gemini_cli/cli/tui/repl.py`
 
+> The shipped interface is the full-screen Textual application described in
+> **10.10**. This section documents the first line-oriented iteration, which
+> remains available as the `--no-tui` fallback.
+
 The terminal interface combines **`prompt_toolkit`** (for rich input, keybindings,
 autocompletion, and arrow-driven selection menus) with **`Rich`** (for visual
 styling, markdown rendering, headers, borders, and progress bars).
@@ -2039,6 +2043,39 @@ DEFAULT_THEME = Theme(
 - [x] The REPL displays streaming text character by character via Rich console.
 - [x] Role, model, and auth selection prompts allow Up/Down arrow navigation and Escape cancellation.
 - [x] `/quota` panel renders live percentages and timers calculated by `QuotaTracker`.
+- [x] All tests pass: `uv run pytest tests/unit/cli/`.
+
+### 10.10 Full-screen Textual TUI — `src/gemini_cli/cli/tui/app.py`
+
+The primary terminal interface is a full-screen **Textual** application that
+implements the mockups in `documentation/ui/model/`:
+
+- ASCII `GEMINI CLI` wordmark, bordered status bar with version, model, and
+  quota, scrollable conversation with `User:` / `✦:` prefixes, bordered input,
+  and a role footer;
+- streaming assistant text, red errors, and a modal `ApprovalScreen` for
+  sensitive tool calls;
+- a modal `MenuScreen` for `/role`, `/model`, and `/auth` with arrow
+  navigation and Escape cancellation;
+- `/help`, `/clear`, `/quota`, `/theme`, `/reset`, `/exit`, and `/quit`;
+- a `QuotaPanel` with colored five-hour and weekly bars;
+- dark and light palettes switched at runtime with `/theme`.
+
+`chat` launches the TUI on an interactive terminal. `--no-tui`, pipes, and CI
+use the plain line fallback in `tui/repl.py`, which keeps text streaming and
+the commands that do not need a menu.
+
+Tests: `tests/unit/cli/test_repl.py` drives the app with Textual's
+`run_test()` pilot; `tests/unit/cli/test_slash_commands.py` covers parsing and
+line-mode dispatch.
+
+- [x] `chat` opens the full-screen UI on a terminal and falls back to lines
+  without one.
+- [x] The logo, status bar, conversation, input, and footer match the mockups.
+- [x] Assistant text streams into the conversation and errors are red.
+- [x] Sensitive tools open a modal Approve/Deny screen.
+- [x] Role, model, and auth menus navigate with arrows and cancel with Escape.
+- [x] `/quota` shows colored bars; `/theme` switches dark and light.
 - [x] All tests pass: `uv run pytest tests/unit/cli/`.
 
 ---
