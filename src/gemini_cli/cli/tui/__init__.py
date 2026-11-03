@@ -1,1 +1,5 @@
-"""Terminal UI helpers (implemented in Phase 8)."""
+"""Terminal UI package."""
+
+from gemini_cli.cli.tui.repl import ConsoleApprovalCallback, run_repl
+
+__all__ = ["ConsoleApprovalCallback", "run_repl"]

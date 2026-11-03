@@ -10,9 +10,11 @@ import pytest
 from typer.testing import CliRunner
 
 from gemini_cli import __version__
+from gemini_cli.auth import AuthenticationError
 from gemini_cli.auth.api_key import ResolvedApiKey
 from gemini_cli.cli.app import app
 from gemini_cli.cli.runtime import build_runtime
+from gemini_cli.cli.tui.repl import ConsoleApprovalCallback
 from gemini_cli.config import Settings
 from gemini_cli.llm import UnknownModelError
 
@@ -181,3 +183,67 @@ async def test_build_runtime_rejects_unknown_model(
 
     with pytest.raises(UnknownModelError):
         await build_runtime(settings, model="gemini-does-not-exist")
+
+
+def test_chat_wires_runtime_and_repl(monkeypatch: pytest.MonkeyPatch) -> None:
+    closed: list[bool] = []
+    called: list[object] = []
+    captured: dict[str, object] = {}
+
+    class FakeRuntime:
+        def close(self) -> None:
+            closed.append(True)
+
+    async def fake_build(
+        settings: Settings,
+        *,
+        model: str | None = None,
+        role: str | None = None,
+        approval_callback: object = None,
+    ) -> FakeRuntime:
+        del settings
+        captured["model"] = model
+        captured["role"] = role
+        captured["approval"] = approval_callback
+        return FakeRuntime()
+
+    async def fake_repl(runtime: object) -> None:
+        called.append(runtime)
+
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.chat.build_runtime",
+        fake_build,
+    )
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.run_repl", fake_repl)
+
+    result = runner.invoke(
+        app,
+        ["chat", "--model", "gemini-2.5-pro", "--role", "code"],
+    )
+
+    assert result.exit_code == 0
+    assert len(called) == 1
+    assert closed == [True]
+    assert captured["model"] == "gemini-2.5-pro"
+    assert captured["role"] == "code"
+    assert isinstance(captured["approval"], ConsoleApprovalCallback)
+
+
+def test_chat_reports_authentication_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def failing_build(
+        settings: Settings,
+        **kwargs: object,
+    ) -> None:
+        del settings, kwargs
+        raise AuthenticationError("no key configured")
+
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.chat.build_runtime",
+        failing_build,
+    )
+
+    result = runner.invoke(app, ["chat"])
+
+    assert result.exit_code == 1
