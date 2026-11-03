@@ -1403,23 +1403,33 @@ class SandboxBackend(Protocol):
     async def is_available(self) -> bool: ...
 ```
 
+The implementation also carries `stdout_truncated` and `stderr_truncated`
+flags on `ExecutionResult`, and defines `SandboxError` for safe configuration
+failures.
+
 ### 8.2 Subprocess backend — `src/gemini_cli/sandbox/subprocess_backend.py`
 
 Uses `asyncio.create_subprocess_shell` with:
 
 - Enforced `timeout_seconds` via `asyncio.wait_for`.
-- Stdout/stderr limited to `max_output_bytes` (truncate with a warning).
-- Working directory validation against `allowed_roots`.
-- No inherited environment unless explicitly passed.
+- Stdout/stderr limited to `max_output_bytes`; the rest of the stream is
+  drained and the truncation is reported.
+- Working directory validation against `allowed_roots`; an empty root list
+  disables execution.
+- A minimal environment allowlist is inherited; explicitly passed variables
+  are merged on top and application secrets are never forwarded.
 
 ### 8.3 Docker backend — `src/gemini_cli/sandbox/docker_backend.py`
 
-Uses the Docker CLI or Docker SDK to:
+Uses the Docker CLI (no extra Python dependency) to:
 
 - Run commands in an ephemeral container.
-- Mount project directory as read-only (or read-write with approval).
-- Apply CPU, memory, and network restrictions.
-- Enforce timeout by stopping the container.
+- Mount the project directory read-only by default; read-write is an explicit
+  backend option.
+- Apply CPU, memory, PID, capability, and network restrictions; network access
+  is disabled by default.
+- Use `--pull=never` so an image is never downloaded implicitly.
+- Enforce timeout by stopping and removing the container.
 
 This backend is **optional**. If Docker is not available, the application
 falls back to the subprocess backend.
@@ -1454,7 +1464,12 @@ class ApprovalCallback(Protocol):
 class ApprovalManager:
     """Decides whether an action needs approval and coordinates it."""
 
-    def __init__(self, callback: ApprovalCallback) -> None: ...
+    def __init__(
+        self,
+        callback: ApprovalCallback | None = None,
+        *,
+        auto_approve_writes: bool = False,
+    ) -> None: ...
 
     async def check(
         self,
@@ -1471,24 +1486,30 @@ class ApprovalManager:
         """
 ```
 
+If approval is required and no callback is configured, the manager raises
+`ApprovalUnavailableError`. Callback failures and invalid decisions are treated
+as `DENIED`.
+
 ### 8.5 Tests — `tests/unit/sandbox/`
 
 | Test file | What it validates |
 |-----------|-------------------|
-| `test_subprocess_backend.py` | Command executes and returns stdout/stderr, timeout kills process, output truncated at limit, working-directory respected. |
-| `test_approval.py` | READ auto-approved, DESTRUCTIVE requires callback, denied callback returns `DENIED`, manager raises when no callback configured for destructive action. |
+| `test_base.py` | `ExecutionResult` construction and immutability, protocol compatibility, `SandboxError` contract. |
+| `test_subprocess_backend.py` | Command executes and returns stdout/stderr, timeout kills process, output truncated at limit, working-directory respected, secrets not inherited. |
+| `test_docker_backend.py` | Availability probing and caching, restricted `docker run` arguments, read-only/network defaults, timeout cleanup, subprocess fallback. |
+| `test_approval.py` | READ auto-approved, DESTRUCTIVE requires callback, denied callback returns `DENIED`, manager raises when no callback configured for destructive action, safe details/logging. |
 
 ### 8.6 Acceptance criteria
 
-- [ ] Subprocess backend executes `echo hello` and returns
+- [x] Subprocess backend executes `echo hello` and returns
   `ExecutionResult(exit_code=0, stdout="hello\n", ...)`.
-- [ ] A command exceeding `timeout_seconds` returns `timed_out=True`.
-- [ ] Output exceeding `max_output_bytes` is truncated.
-- [ ] `ApprovalManager` auto-approves `read_file` but requires approval for
+- [x] A command exceeding `timeout_seconds` returns `timed_out=True`.
+- [x] Output exceeding `max_output_bytes` is truncated.
+- [x] `ApprovalManager` auto-approves `read_file` but requires approval for
   `run_command`.
-- [ ] Docker backend returns `is_available() == False` when Docker is not
+- [x] Docker backend returns `is_available() == False` when Docker is not
   installed.
-- [ ] All tests pass: `uv run pytest tests/unit/sandbox/`.
+- [x] All tests pass: `uv run pytest tests/unit/sandbox/`.
 
 ---
 
