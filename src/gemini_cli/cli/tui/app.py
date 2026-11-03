@@ -25,8 +25,8 @@ from gemini_cli.cli.tui.repl import (
     render_help,
     role_options,
 )
+from gemini_cli.cli.tui.themes import DEFAULT_THEME, LIGHT_THEME, Theme
 from gemini_cli.cli.tui.widgets import (
-    GEMINI_BLUE,
     GEMINI_MUTED,
     GEMINI_RED,
     ApprovalScreen,
@@ -85,6 +85,16 @@ class GeminiApp(App[None]):
     #footer {
         height: 1;
         margin: 0 1;
+    }
+    Screen.light {
+        background: #F5F6F7;
+        color: #1E2023;
+    }
+    Screen.light #conversation, Screen.light #prompt {
+        background: #F5F6F7;
+    }
+    Screen.light #status, Screen.light #prompt, Screen.light #quota {
+        border: round #C7CCD3;
     }
     ApprovalScreen {
         align: center middle;
@@ -155,10 +165,12 @@ class GeminiApp(App[None]):
         runtime: CliRuntime,
         *,
         bridge: TuiApprovalBridge | None = None,
+        theme: Theme = DEFAULT_THEME,
     ) -> None:
         super().__init__()
         self.runtime = runtime
         self._bridge = bridge
+        self._theme = theme
         self.transcript: list[str] = []
         self.session = Session(
             model=runtime.settings.model,
@@ -174,6 +186,7 @@ class GeminiApp(App[None]):
         yield RoleBar()
 
     def on_mount(self) -> None:
+        self._apply_theme()
         self._refresh_status()
         self._write_assistant("Can I help you today?")
         self.query_one("#prompt", Input).focus()
@@ -205,7 +218,12 @@ class GeminiApp(App[None]):
     ) -> bool:
         """Show the approval modal and return the user's decision."""
         return await self.push_screen_wait(
-            ApprovalScreen(action_description, risk_level, details)
+            ApprovalScreen(
+                action_description,
+                risk_level,
+                details,
+                theme=self._theme,
+            )
         )
 
     async def _handle_slash(self, message: str) -> None:
@@ -232,14 +250,16 @@ class GeminiApp(App[None]):
             return
 
         if name == "/role":
-            selected = await self.push_screen_wait(MenuScreen(role_options(), "Roles:"))
+            selected = await self.push_screen_wait(
+                MenuScreen(role_options(), "Roles:", self._theme)
+            )
             if selected is not None:
                 await self._rebuild(role=selected.value)
             return
 
         if name == "/model":
             selected = await self.push_screen_wait(
-                MenuScreen(model_options(), "Models:")
+                MenuScreen(model_options(), "Models:", self._theme)
             )
             if selected is not None:
                 await self._rebuild(model=selected.value)
@@ -247,7 +267,7 @@ class GeminiApp(App[None]):
 
         if name == "/auth":
             selected = await self.push_screen_wait(
-                MenuScreen(AUTH_OPTIONS, "Authentication methods:")
+                MenuScreen(AUTH_OPTIONS, "Authentication methods:", self._theme)
             )
             if selected is None:
                 return
@@ -273,7 +293,9 @@ class GeminiApp(App[None]):
             return
 
         if name == "/theme":
-            self._write_info("Theme switching arrives in Phase 8.15.")
+            self._theme = LIGHT_THEME if self._theme.name == "dark" else DEFAULT_THEME
+            self._apply_theme()
+            self._write_info(f"Theme: {self._theme.name}")
             return
 
         self._write_info(f"Unknown command {name}. Type /help for available commands.")
@@ -309,7 +331,7 @@ class GeminiApp(App[None]):
     async def _run_turn(self, message: str) -> None:
         prompt = self.query_one("#prompt", Input)
         prompt.disabled = True
-        view = self._new_message("✦: ", GEMINI_BLUE)
+        view = self._new_message("✦: ", self._theme.assistant_color)
         try:
             async for event in self.runtime.agent.run(self.session, message):
                 if event.event_type is AgentEventType.TEXT_CHUNK:
@@ -328,17 +350,30 @@ class GeminiApp(App[None]):
             self._refresh_status()
             self.transcript.append(view.plain)
 
+    def _apply_theme(self) -> None:
+        self.theme = "textual-dark" if self._theme.name == "dark" else "textual-light"
+        screen = self.screen
+        screen.set_class(self._theme.name == "light", "light")
+        screen.set_class(self._theme.name == "dark", "dark")
+        self.query_one(Logo).apply_theme(self._theme)
+        self._refresh_status()
+
     def _refresh_status(self) -> None:
         quota = self.runtime.quota.get_5h_status()
         self.query_one(StatusBar).update_status(
             model=self.runtime.settings.model,
             used_tokens=quota.used_tokens,
             limit_tokens=quota.limit_tokens,
+            theme=self._theme,
         )
-        self.query_one(RoleBar).update_role(self.runtime.settings.role)
+        self.query_one(RoleBar).update_role(
+            self.runtime.settings.role,
+            self._theme,
+        )
         self.query_one(QuotaPanel).update_quota(
             self.runtime.quota.get_5h_status(),
             self.runtime.quota.get_weekly_status(),
+            self._theme,
         )
 
     def _new_message(self, prefix: str, prefix_style: str) -> MessageView:
@@ -354,7 +389,7 @@ class GeminiApp(App[None]):
 
     def _write_assistant(self, message: str) -> None:
         self.transcript.append(f"✦: {message}")
-        view = self._new_message("✦: ", GEMINI_BLUE)
+        view = self._new_message("✦: ", self._theme.assistant_color)
         view.append(message)
         self._scroll_to_end()
 

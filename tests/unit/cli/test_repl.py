@@ -313,8 +313,8 @@ def test_default_theme_has_expected_styles() -> None:
     from gemini_cli.cli.tui.themes import DEFAULT_THEME
 
     assert DEFAULT_THEME.name == "dark"
-    assert DEFAULT_THEME.assistant_color == "bright_cyan"
-    assert DEFAULT_THEME.error_color == "red"
+    assert DEFAULT_THEME.assistant_color == "#5B9BD5"
+    assert DEFAULT_THEME.error_color == "#E06C75"
 
 
 def test_get_theme_is_case_insensitive() -> None:
@@ -655,14 +655,28 @@ async def test_tui_quota_panel_toggles_with_slash_and_escape() -> None:
         assert panel.display is False
 
 
-async def test_tui_theme_is_deferred() -> None:
+def test_light_theme_uses_a_light_palette() -> None:
+    from gemini_cli.cli.tui.themes import LIGHT_THEME
+
+    assert LIGHT_THEME.background == "#F5F6F7"
+    assert LIGHT_THEME.foreground == "#1E2023"
+    assert LIGHT_THEME.name == "light"
+
+
+async def test_tui_theme_toggles_with_slash() -> None:
     from gemini_cli.cli.tui.app import GeminiApp
 
     app = GeminiApp(FakeRuntime())
 
     async with app.run_test(size=(120, 40)) as pilot:
+        assert app._theme.name == "dark"
         await pilot.press("slash", "t", "h", "e", "m", "e", "enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
+        assert app._theme.name == "light"
+        assert any("Theme: light" in line for line in app.transcript)
 
-    assert any("Theme switching" in line for line in app.transcript)
+        await pilot.press("slash", "t", "h", "e", "m", "e", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert app._theme.name == "dark"

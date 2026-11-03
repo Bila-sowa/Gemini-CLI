@@ -16,14 +16,15 @@ from textual.widgets.option_list import Option
 
 from gemini_cli import __version__
 from gemini_cli.cli.tui.repl import MenuOption
+from gemini_cli.cli.tui.themes import DEFAULT_THEME, Theme
 from gemini_cli.core.quota_tracker import QuotaWindowStatus
 
-GEMINI_BLUE = "#5B9BD5"
-GEMINI_ORANGE = "#D99A3D"
-GEMINI_GREEN = "#5FBF77"
-GEMINI_RED = "#E06C75"
-GEMINI_MUTED = "#8A8F98"
-GEMINI_BORDER = "#3A3F45"
+GEMINI_BLUE = DEFAULT_THEME.accent
+GEMINI_ORANGE = DEFAULT_THEME.warning
+GEMINI_GREEN = DEFAULT_THEME.success
+GEMINI_RED = DEFAULT_THEME.error_color
+GEMINI_MUTED = DEFAULT_THEME.muted
+GEMINI_BORDER = DEFAULT_THEME.border
 
 GEMINI_LOGO = r"""
  ██████╗ ███████╗███╗   ███╗██╗███╗   ██╗██╗     ██████╗██╗     ██╗
@@ -48,7 +49,11 @@ class Logo(Static):
     """The blue ASCII wordmark shown at the top of the app."""
 
     def __init__(self) -> None:
-        super().__init__(Text(GEMINI_LOGO, style=f"bold {GEMINI_BLUE}"), id="logo")
+        super().__init__(id="logo")
+        self.apply_theme(DEFAULT_THEME)
+
+    def apply_theme(self, theme: Theme) -> None:
+        self.update(Text(GEMINI_LOGO, style=f"bold {theme.accent}"))
 
 
 class StatusBar(Static):
@@ -70,17 +75,18 @@ class StatusBar(Static):
         model: str,
         used_tokens: int,
         limit_tokens: int,
+        theme: Theme = DEFAULT_THEME,
     ) -> None:
         quota = f"{compact_tokens(used_tokens)}/{compact_tokens(limit_tokens)} tokens"
         self._plain = f">_  version: v{__version__}    model: {model}    quota: {quota}"
         text = Text()
-        text.append(">_  ", style=GEMINI_BLUE)
-        text.append("version: ", style=GEMINI_MUTED)
-        text.append(f"v{__version__}    ", style="white")
-        text.append("model: ", style=GEMINI_MUTED)
-        text.append(f"{model}    ", style=GEMINI_BLUE)
-        text.append("quota: ", style=GEMINI_MUTED)
-        text.append(quota, style=GEMINI_ORANGE)
+        text.append(">_  ", style=theme.accent)
+        text.append("version: ", style=theme.muted)
+        text.append(f"v{__version__}    ", style=theme.foreground)
+        text.append("model: ", style=theme.muted)
+        text.append(f"{model}    ", style=theme.accent)
+        text.append("quota: ", style=theme.muted)
+        text.append(quota, style=theme.warning)
         self.update(text)
 
 
@@ -97,13 +103,17 @@ class RoleBar(Static):
         """Plain-text form used by tests and logs."""
         return self._plain
 
-    def update_role(self, role: str) -> None:
+    def update_role(
+        self,
+        role: str,
+        theme: Theme = DEFAULT_THEME,
+    ) -> None:
         label = role.capitalize()
         self._plain = f"role: Gemini {label} (change role: /role)"
         text = Text()
-        text.append("role: ", style=GEMINI_MUTED)
-        text.append(f"Gemini {label}", style=GEMINI_BLUE)
-        text.append(" (change role: /role)", style=GEMINI_MUTED)
+        text.append("role: ", style=theme.muted)
+        text.append(f"Gemini {label}", style=theme.accent)
+        text.append(" (change role: /role)", style=theme.muted)
         self.update(text)
 
 
@@ -126,61 +136,12 @@ class MessageView(Static):
         self.update(self._text)
 
 
-class ApprovalScreen(ModalScreen[bool]):
-    """Modal confirmation for a sensitive tool call."""
-
-    BINDINGS: ClassVar[list[BindingType]] = [
-        ("y", "approve", "Approve"),
-        ("n", "deny", "Deny"),
-        ("escape", "deny", "Deny"),
-    ]
-
-    def __init__(
-        self,
-        action_description: str,
-        risk_level: str,
-        details: str,
-    ) -> None:
-        super().__init__()
-        self._action = action_description
-        self._risk = risk_level
-        self._details = details
-
-    def compose(self) -> ComposeResult:
-        title = Text()
-        title.append("Approval required", style=f"bold {GEMINI_ORANGE}")
-        title.append(f"  ({self._risk})", style=GEMINI_MUTED)
-
-        with Vertical(id="approval"):
-            yield Static(title, id="approval-title")
-            yield Static(
-                Text(self._action, style="bold white"),
-                id="approval-action",
-            )
-            yield Static(
-                Text(self._details, style=GEMINI_MUTED),
-                id="approval-details",
-            )
-            with Horizontal(id="approval-buttons"):
-                yield Button("Approve", id="approve", variant="success")
-                yield Button("Deny", id="deny", variant="error")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.dismiss(event.button.id == "approve")
-
-    def action_approve(self) -> None:
-        self.dismiss(True)
-
-    def action_deny(self) -> None:
-        self.dismiss(False)
-
-
 def _bar_text(percentage: float, color: str, width: int = 15) -> Text:
     clamped = max(0.0, min(100.0, percentage))
     filled = round(clamped / 100 * width)
     text = Text()
     text.append("█" * filled, style=color)
-    text.append("░" * (width - filled), style=GEMINI_BORDER)
+    text.append("░" * (width - filled), style=DEFAULT_THEME.border)
     return text
 
 
@@ -194,26 +155,27 @@ def _format_remaining(delta: timedelta) -> str:
 def render_quota_text(
     five_hour: QuotaWindowStatus,
     weekly: QuotaWindowStatus,
+    theme: Theme = DEFAULT_THEME,
 ) -> Text:
     """Render the quota panel as styled Rich text."""
     text = Text()
-    text.append("─ QUOTA ", style=f"bold {GEMINI_MUTED}")
-    text.append("─" * 44, style=GEMINI_BORDER)
+    text.append("─ QUOTA ", style=f"bold {theme.muted}")
+    text.append("─" * 44, style=theme.border)
     text.append("\n")
-    text.append("  5h limit   ", style=GEMINI_MUTED)
-    text.append_text(_bar_text(five_hour.percentage, GEMINI_RED))
-    text.append(f"  {five_hour.percentage:>5.1f}%   ", style="white")
+    text.append("  5h limit   ", style=theme.muted)
+    text.append_text(_bar_text(five_hour.percentage, theme.error_color))
+    text.append(f"  {five_hour.percentage:>5.1f}%   ", style=theme.foreground)
     text.append(
         f"{_format_remaining(five_hour.time_remaining)} remaining",
-        style=GEMINI_MUTED,
+        style=theme.muted,
     )
     text.append("\n")
-    text.append("  Weekly     ", style=GEMINI_MUTED)
-    text.append_text(_bar_text(weekly.percentage, GEMINI_GREEN))
-    text.append(f"  {weekly.percentage:>5.1f}%   ", style="white")
+    text.append("  Weekly     ", style=theme.muted)
+    text.append_text(_bar_text(weekly.percentage, theme.success))
+    text.append(f"  {weekly.percentage:>5.1f}%   ", style=theme.foreground)
     text.append(
         f"{_format_remaining(weekly.time_remaining)} remaining",
-        style=GEMINI_MUTED,
+        style=theme.muted,
     )
     return text
 
@@ -234,8 +196,9 @@ class QuotaPanel(Static):
         self,
         five_hour: QuotaWindowStatus,
         weekly: QuotaWindowStatus,
+        theme: Theme = DEFAULT_THEME,
     ) -> None:
-        rendered = render_quota_text(five_hour, weekly)
+        rendered = render_quota_text(five_hour, weekly, theme)
         self._plain = rendered.plain
         self.update(rendered)
 
@@ -247,23 +210,29 @@ class MenuScreen(ModalScreen[MenuOption | None]):
         ("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, options: Sequence[MenuOption], title: str) -> None:
+    def __init__(
+        self,
+        options: Sequence[MenuOption],
+        title: str,
+        theme: Theme = DEFAULT_THEME,
+    ) -> None:
         super().__init__()
         self._options = tuple(options)
         self._title = title
+        self._theme = theme
 
     def compose(self) -> ComposeResult:
         with Vertical(id="menu"):
             yield Static(
-                Text(self._title, style=f"bold {GEMINI_BLUE}"),
+                Text(self._title, style=f"bold {self._theme.accent}"),
                 id="menu-title",
             )
             yield OptionList(
                 *[
                     Option(
                         Text.assemble(
-                            (option.label, "bold white"),
-                            (f" - {option.description}", GEMINI_MUTED),
+                            (option.label, f"bold {self._theme.foreground}"),
+                            (f" - {option.description}", self._theme.muted),
                         )
                     )
                     for option in self._options
@@ -282,6 +251,57 @@ class MenuScreen(ModalScreen[MenuOption | None]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+class ApprovalScreen(ModalScreen[bool]):
+    """Modal confirmation for a sensitive tool call."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        ("y", "approve", "Approve"),
+        ("n", "deny", "Deny"),
+        ("escape", "deny", "Deny"),
+    ]
+
+    def __init__(
+        self,
+        action_description: str,
+        risk_level: str,
+        details: str,
+        theme: Theme = DEFAULT_THEME,
+    ) -> None:
+        super().__init__()
+        self._action = action_description
+        self._risk = risk_level
+        self._details = details
+        self._theme = theme
+
+    def compose(self) -> ComposeResult:
+        title = Text()
+        title.append("Approval required", style=f"bold {self._theme.warning}")
+        title.append(f"  ({self._risk})", style=self._theme.muted)
+
+        with Vertical(id="approval"):
+            yield Static(title, id="approval-title")
+            yield Static(
+                Text(self._action, style=f"bold {self._theme.foreground}"),
+                id="approval-action",
+            )
+            yield Static(
+                Text(self._details, style=self._theme.muted),
+                id="approval-details",
+            )
+            with Horizontal(id="approval-buttons"):
+                yield Button("Approve", id="approve", variant="success")
+                yield Button("Deny", id="deny", variant="error")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "approve")
+
+    def action_approve(self) -> None:
+        self.dismiss(True)
+
+    def action_deny(self) -> None:
+        self.dismiss(False)
 
 
 __all__ = [
