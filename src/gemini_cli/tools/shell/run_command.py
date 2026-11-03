@@ -1,9 +1,9 @@
 """Tool that runs shell commands through a sandbox backend.
 
-Execution is not implemented yet: the sandbox backend arrives with Phase 6.
-Until then the tool is registered, validates its parameters, and reports a
-structured failure so the agent loop keeps working and the model gets a clear
-reason instead of a silent no-op.
+The tool validates its parameters and delegates execution to a
+:class:`~gemini_cli.sandbox.base.SandboxBackend`. A backend is injected
+explicitly by the agent runtime after approval; without one, the tool reports a
+structured failure instead of executing anything itself.
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from gemini_cli.config import Settings
+from gemini_cli.sandbox.base import SandboxBackend, SandboxError
 from gemini_cli.tools.base import BaseTool, RiskLevel, ToolCategory, ToolResult
 from gemini_cli.tools.filesystem.path_validator import (
     PathSecurityError,
@@ -20,6 +21,7 @@ from gemini_cli.tools.filesystem.path_validator import (
 UNAVAILABLE_MESSAGE = (
     "Shell execution is unavailable: no sandbox backend is configured."
 )
+MAX_ERROR_CHARS = 2_000
 
 
 def _failure(message: str) -> ToolResult:
@@ -59,8 +61,13 @@ class RunCommandTool(BaseTool):
     sandbox backend once one is configured.
     """
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        backend: SandboxBackend | None = None,
+    ) -> None:
         self._settings = settings
+        self._backend = backend
 
     @property
     def name(self) -> str:
@@ -102,11 +109,61 @@ class RunCommandTool(BaseTool):
             if not directory.is_dir():
                 return _failure(f"Working directory is not a directory: {directory}.")
 
+        if self._backend is None:
+            return ToolResult(
+                success=False,
+                output="",
+                error=UNAVAILABLE_MESSAGE,
+                metadata={"available": False},
+            )
+
+        timeout_seconds = (
+            params.timeout_seconds
+            if params.timeout_seconds is not None
+            else self._settings.shell_timeout_seconds
+        )
+
+        try:
+            result = await self._backend.execute(
+                params.command,
+                working_directory=params.working_directory,
+                timeout_seconds=timeout_seconds,
+                max_output_bytes=self._settings.shell_max_output_bytes,
+            )
+        except SandboxError as exc:
+            return _failure(str(exc))
+
+        metadata = {
+            "exit_code": result.exit_code,
+            "timed_out": result.timed_out,
+            "duration_seconds": result.duration_seconds,
+            "stdout_truncated": result.stdout_truncated,
+            "stderr_truncated": result.stderr_truncated,
+        }
+
+        if result.timed_out:
+            return ToolResult(
+                success=False,
+                output=result.stdout,
+                error=f"Command timed out after {timeout_seconds} seconds.",
+                metadata=metadata,
+            )
+
+        if result.exit_code != 0:
+            detail = result.stderr.strip()
+            if not detail:
+                detail = f"Command exited with code {result.exit_code}."
+            return ToolResult(
+                success=False,
+                output=result.stdout,
+                error=detail[:MAX_ERROR_CHARS],
+                metadata=metadata,
+            )
+
         return ToolResult(
-            success=False,
-            output="",
-            error=UNAVAILABLE_MESSAGE,
-            metadata={"available": False},
+            success=True,
+            output=result.stdout,
+            metadata=metadata,
         )
 
 

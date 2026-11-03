@@ -8,6 +8,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from gemini_cli.config import Settings
+from gemini_cli.sandbox.base import ExecutionResult, SandboxError
 from gemini_cli.tools import ToolRegistry
 from gemini_cli.tools.base import RiskLevel, ToolCategory
 from gemini_cli.tools.shell import (
@@ -21,6 +22,46 @@ class UnexpectedParams(BaseModel):
     """Parameter model of a different tool."""
 
     other: str = ""
+
+
+class FakeBackend:
+    """Sandbox backend that returns a pre-configured result or error."""
+
+    def __init__(
+        self,
+        result: ExecutionResult | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    async def execute(
+        self,
+        command: str,
+        *,
+        working_directory: str | None = None,
+        timeout_seconds: int = 30,
+        max_output_bytes: int = 524_288,
+        env: dict[str, str] | None = None,
+    ) -> ExecutionResult:
+        self.calls.append(
+            {
+                "command": command,
+                "working_directory": working_directory,
+                "timeout_seconds": timeout_seconds,
+                "max_output_bytes": max_output_bytes,
+                "env": env,
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        if self.result is None:
+            raise AssertionError("FakeBackend has no result configured.")
+        return self.result
+
+    async def is_available(self) -> bool:
+        return True
 
 
 async def test_reports_unavailable_without_sandbox(
@@ -161,3 +202,114 @@ def test_tool_metadata(settings: Settings) -> None:
     assert tool.parameters_schema is RunCommandParams
     assert tool.category is ToolCategory.SHELL
     assert tool.risk_level is RiskLevel.DESTRUCTIVE
+
+
+async def test_executes_through_configured_backend(settings: Settings) -> None:
+    backend = FakeBackend(
+        ExecutionResult(
+            exit_code=0,
+            stdout="hello\n",
+            stderr="",
+            timed_out=False,
+            duration_seconds=0.1,
+        )
+    )
+    tool = RunCommandTool(settings, backend)
+
+    result = await tool.execute(RunCommandParams(command="echo hello"))
+
+    assert result.success is True
+    assert result.output == "hello\n"
+    assert result.error is None
+    assert result.metadata["exit_code"] == 0
+    assert result.metadata["timed_out"] is False
+    assert backend.calls[0]["command"] == "echo hello"
+    assert backend.calls[0]["timeout_seconds"] == settings.shell_timeout_seconds
+    assert backend.calls[0]["max_output_bytes"] == settings.shell_max_output_bytes
+
+
+async def test_uses_explicit_timeout(settings: Settings) -> None:
+    backend = FakeBackend(
+        ExecutionResult(
+            exit_code=0,
+            stdout="",
+            stderr="",
+            timed_out=False,
+            duration_seconds=0.1,
+        )
+    )
+    tool = RunCommandTool(settings, backend)
+
+    await tool.execute(RunCommandParams(command="echo hello", timeout_seconds=7))
+
+    assert backend.calls[0]["timeout_seconds"] == 7
+
+
+async def test_reports_timeout(settings: Settings) -> None:
+    backend = FakeBackend(
+        ExecutionResult(
+            exit_code=-9,
+            stdout="partial",
+            stderr="",
+            timed_out=True,
+            duration_seconds=2.0,
+        )
+    )
+    tool = RunCommandTool(settings, backend)
+
+    result = await tool.execute(RunCommandParams(command="sleep 10", timeout_seconds=2))
+
+    assert result.success is False
+    assert result.output == "partial"
+    assert result.error == "Command timed out after 2 seconds."
+    assert result.metadata["timed_out"] is True
+
+
+async def test_reports_non_zero_exit(settings: Settings) -> None:
+    backend = FakeBackend(
+        ExecutionResult(
+            exit_code=2,
+            stdout="",
+            stderr="boom\n",
+            timed_out=False,
+            duration_seconds=0.1,
+        )
+    )
+    tool = RunCommandTool(settings, backend)
+
+    result = await tool.execute(RunCommandParams(command="false"))
+
+    assert result.success is False
+    assert result.error == "boom"
+    assert result.metadata["exit_code"] == 2
+
+
+async def test_reports_backend_configuration_error(settings: Settings) -> None:
+    backend = FakeBackend(error=SandboxError("blocked by sandbox"))
+    tool = RunCommandTool(settings, backend)
+
+    result = await tool.execute(RunCommandParams(command="echo hello"))
+
+    assert result.success is False
+    assert result.error == "blocked by sandbox"
+
+
+async def test_dispatch_through_registry_with_backend(
+    settings: Settings,
+) -> None:
+    backend = FakeBackend(
+        ExecutionResult(
+            exit_code=0,
+            stdout="hello\n",
+            stderr="",
+            timed_out=False,
+            duration_seconds=0.1,
+        )
+    )
+    registry = ToolRegistry()
+    registry.register(RunCommandTool(settings, backend))
+
+    result = await registry.dispatch("run_command", {"command": "echo hello"})
+
+    assert result.success is True
+    assert result.output == "hello\n"
