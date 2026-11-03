@@ -164,29 +164,42 @@ storage, or tool execution directly.
 
 ### Core agent runtime
 
-The `core` package owns the model-independent orchestration logic.
+The `core` package owns model-independent orchestration and never imports the
+`cli` or `tui` packages.
 
-`core/agent.py` implements the main think-act-observe loop:
+`core/agent.py` implements the think-act-observe loop:
 
-1. Assemble the current conversation and available tool definitions.
-2. Ask the LLM for the next response or tool call.
-3. Validate the model output and requested tool arguments.
-4. Request approval when the operation is sensitive.
-5. Execute the selected tool through the registry and sandbox.
-6. Add the observation to the session and continue until a final answer or a
-   configured limit is reached.
+1. Validate the user message against `Settings.max_input_chars` and append it
+   to the session.
+2. Fit the history to the model window, export tool declarations, and stream a
+   response.
+3. Emit text and thinking events as they arrive and buffer complete tool calls.
+4. Record the assistant turn, usage, and quota consumption, then check the
+   iteration limit.
+5. For each tool call, check approval, dispatch through the registry, and add
+   exactly one observation — including denied, unknown, and failed calls.
+6. Repeat until the model answers without tool calls or the limit is reached.
 
-`core/session.py` owns conversation history and runtime state. It should keep
-messages, tool calls, observations, and relevant metadata together without
-depending on CLI presentation details.
+The agent depends on a small `ChatClient` protocol rather than the concrete
+Gemini client, so the loop can be tested with scripted fakes.
 
-`core/context_manager.py` keeps requests within the active model's context
-window. It may trim or summarize older content, but it must preserve system
-instructions, current user intent, unresolved tool calls, and recent results.
+`core/session.py` keeps the ordered history, tool calls, observations, token
+totals, and iteration counter. Observations are keyed by call id so the tool
+name is available when Gemini needs it.
 
-`core/streaming.py` translates Gemini streaming events into stable internal
-events. Both the interactive TUI and non-interactive command can consume these
-events without importing the Gemini SDK directly.
+`core/context_manager.py` estimates tokens locally and trims the oldest
+indivisible groups first. It never separates an assistant tool call from its
+observations, never removes the most recent messages, and keeps the history
+starting with a user turn.
+
+`core/quota_tracker.py` records reported usage in `~/.gemini-cli/quota.json`
+using an atomic, private write and reports rolling five-hour and seven-day
+windows. The limits are local policy derived from published free-tier
+averages, not a provider guarantee.
+
+`core/streaming.py` defines the stable `AgentEvent` contract. Both the
+interactive TUI and non-interactive command can consume these events without
+importing the Gemini SDK.
 
 ### LLM integration
 

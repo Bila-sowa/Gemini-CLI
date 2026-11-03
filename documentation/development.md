@@ -281,6 +281,33 @@ names, flat JSON Schema declarations for every tool, and the security guards
 `dispatch()`. The shell tool is also checked without a backend, where it must
 return the structured unavailable result rather than executing anything.
 
+## Agent core runtime
+
+The `core` package is the model-independent orchestrator. It has no dependency
+on `cli` or `tui`; the acceptance suite enforces that with an import check.
+
+- `Session` keeps the ordered history, assistant tool calls, observations,
+  token totals, and iteration counter. Observations are keyed by call id, so
+  the tool name is available when Gemini needs it.
+- `ContextManager` estimates tokens locally (four characters per token) and
+  trims the oldest complete groups first. It never separates an assistant tool
+  call from its observations, never removes the most recent messages, and
+  keeps the history starting with a user turn.
+- `QuotaTracker` records reported usage in `~/.gemini-cli/quota.json` with an
+  atomic, private write. It reports rolling five-hour and seven-day windows;
+  the limits are configurable policy derived from published free-tier averages,
+  not provider guarantees.
+- `AgentEvent` and `AgentEventType` are the presentation contract. Text,
+  thinking, tool, error, and done events stay stable across providers.
+- `Agent.run()` streams model output, checks approval before every dispatch,
+  records exactly one observation per tool call, and stops at
+  `max_agent_iterations`. Denied, unknown, and approval-unavailable calls
+  produce an observation instead of breaking the loop.
+
+The agent depends on a small `ChatClient` protocol instead of importing the
+Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
+`FakeTool` fixtures from `tests/fixtures/`.
+
 ## Current status
 
 | Area | Status |
@@ -289,7 +316,7 @@ return the structured unavailable result rather than executing anything.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (505 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, and the Phase 5–6 acceptance suites) |
+| Test suite | Available (606 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, and the Phase 5–7 acceptance suites) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -300,6 +327,11 @@ return the structured unavailable result rather than executing anything.
 | Shell tool (`run_command`) | Available through an injected sandbox backend |
 | Sandbox backends (`SubprocessBackend`, optional `DockerBackend`) | Available |
 | Approval manager (`ApprovalManager`) | Available (fail-closed policy) |
+| Conversation session (`Session`) | Available |
+| Context manager (`ContextManager`) | Available (local token estimate, group trimming) |
+| Local quota tracker (`QuotaTracker`) | Available (rolling 5h and 7d windows) |
+| Agent events (`AgentEvent`, `AgentEventType`) | Available |
+| Agent loop (`Agent`) | Available (streaming, approvals, iteration limit) |
 | Web tool (`fetch_url`) | Available (public HTTP(S), SSRF guards, size limit) |
 | Code tool (`code_search`) | Available (regex search with context) |
 | Environment template (`.env.example`) | Available |
@@ -312,6 +344,7 @@ return the structured unavailable result rather than executing anything.
 | Phase 4 acceptance | Passed |
 | Phase 5 acceptance | Passed |
 | Phase 6 acceptance | Passed |
+| Phase 7 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security

@@ -15,19 +15,19 @@
 </div>
 
 > [!NOTE]
-> **Project status:** Phases 0–6 are complete: project foundation,
+> **Project status:** Phases 0–7 are complete: project foundation,
 > configuration and project context, API-key authentication with OS keyring
 > storage, structured logging with opt-in telemetry, the Gemini client (model
-> registry, retry, fallback, prompt templates, and streaming), and the tool
-> system with filesystem, web, code, and shell tools. Phase 6 adds the sandbox
-> package: a bounded subprocess backend, an optional Docker backend, and a
-> fail-closed approval manager; `run_command` delegates to a backend when one
-> is injected. The agent runtime, interactive CLI, and MCP
-> integration are not implemented yet. The package installs,
-> `gemini-cli-py --version` works, and CI runs lint, type checks, and the test
-> suite on Python 3.11–3.13. The screenshots below are interface concepts, and
-> the feature list describes the intended product scope. The package has not
-> been published to PyPI yet.
+> registry, retry, fallback, prompt templates, and streaming), the tool system
+> with filesystem, web, code, and shell tools, and the sandbox with a
+> fail-closed approval manager. Phase 7 adds the agent core: conversation
+> sessions, context-window trimming, local quota accounting, a stable event
+> stream, and the streaming think-act-observe loop that executes approved tools
+> and records observations. The interactive CLI and MCP integration are not
+> implemented yet. The package installs, `gemini-cli-py --version` works, and CI
+> runs lint, type checks, and the test suite on Python 3.11–3.13. The
+> screenshots below are interface concepts, and the feature list describes the
+> intended product scope. The package has not been published to PyPI yet.
 
 ## About
 

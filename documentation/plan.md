@@ -1554,6 +1554,12 @@ class Session:
     def update_usage(self, usage: UsageInfo) -> None: ...
 ```
 
+The implementation also adds `record_iteration()`, `total_tokens`, and
+`last_message()`. `add_tool_result()` resolves the tool name from the call id
+recorded earlier, because Gemini requires a function name on every tool
+response. `get_history()` returns a copy so a caller cannot mutate the session
+while the agent iterates.
+
 ### 9.2 Context manager — `src/gemini_cli/core/context_manager.py`
 
 ```python
@@ -1613,12 +1619,19 @@ class QuotaTracker:
 
     Calculates:
     - 5-hour sliding window quota consumption and remaining time.
-    - Weekly rolling quota consumption and reset timestamp (e.g. Monday 09:00).
+    - Weekly rolling quota consumption and remaining time.
     - Status for the header area (``quota: 100k/200k tokens``) and the
       ``/quota`` panel.
     """
 
-    def __init__(self, storage_path: Path | None = None) -> None: ...
+    def __init__(
+        self,
+        storage_path: Path | None = None,
+        *,
+        five_hour_limit: int = 200_000,
+        weekly_limit: int = 1_000_000,
+        now: Callable[[], datetime] | None = None,
+    ) -> None: ...
 
     def record_usage(self, model: str, input_tokens: int, output_tokens: int) -> None: ...
 
@@ -1626,6 +1639,13 @@ class QuotaTracker:
 
     def get_weekly_status(self) -> QuotaWindowStatus: ...
 ```
+
+Both windows are rolling: the weekly window is the last seven days, not a
+calendar-week reset. The default limits are local policy derived from published
+free-tier averages (roughly 250k input tokens per minute and 250 requests per
+day on Gemini 2.5 Flash); they are configurable through
+`Settings.quota_5h_token_limit` and `Settings.quota_weekly_token_limit`.
+`now` is injectable for deterministic tests.
 
 ### 9.4 Streaming adapter — `src/gemini_cli/core/streaming.py`
 
@@ -1658,6 +1678,18 @@ class AgentEvent:
 Both the interactive TUI and the non-interactive `run` command consume
 `AgentEvent` objects. They never import the Gemini SDK.
 
+The implementation uses `StrEnum` instead of `str, Enum`, makes `AgentEvent`
+frozen, and adds `from_stream_event()`, `tool_call_end()`, `done_event()`, and
+`error_event()` helpers. Text deltas become `TEXT_CHUNK` (or `THINKING` when
+the provider marks them as reasoning), completed tool calls become
+`TOOL_CALL_START`, and stream errors become `ERROR`. Usage and completion
+markers stay inside the agent loop.
+
+When one model turn requests several tools, their `TOOL_CALL_START` events are
+emitted as the calls are announced, followed by one `TOOL_CALL_END` per
+execution. A single tool call still produces the documented
+`TOOL_CALL_START` → `TOOL_CALL_END` order.
+
 ### 9.5 Agent loop — `src/gemini_cli/core/agent.py`
 
 This is the central orchestrator.
@@ -1675,7 +1707,7 @@ class Agent:
 
     def __init__(
         self,
-        llm_client: GeminiClient,
+        llm_client: ChatClient,
         tool_registry: ToolRegistry,
         approval_manager: ApprovalManager,
         context_manager: ContextManager,
@@ -1711,6 +1743,16 @@ class Agent:
         """
 ```
 
+The agent depends on a small `ChatClient` protocol with
+`generate_stream(...)` instead of importing `GeminiClient`; the concrete client
+satisfies it structurally and tests use the fakes from `tests/fixtures/`.
+
+Every requested tool call receives exactly one observation — including
+unknown, denied, and approval-unavailable calls — because the next Gemini
+request is invalid when a call has no response. `ApprovalUnavailableError` is
+treated as a denial, not a crash, and text is not replayed into the assistant
+message when the stream fails.
+
 **Guard rails enforced in the loop:**
 
 | Guard | Default | Behavior |
@@ -1725,39 +1767,49 @@ class Agent:
 
 | Test file | What it validates |
 |-----------|-------------------|
-| `tests/unit/core/test_session.py` | Message CRUD, usage tracking, history retrieval. |
-| `tests/unit/core/test_context_manager.py` | Messages are trimmed, recent messages preserved, unresolved tool calls preserved, empty history returns empty. |
-| `tests/unit/core/test_quota_tracker.py` | Local quota persistence, sliding 5-hour window calculation, weekly window reset timestamp, percentage calculation. |
-| `tests/unit/core/test_streaming.py` | `AgentEvent` construction and type discrimination. |
-| `tests/integration/test_agent_loop.py` | Full loop with fake LLM (returns text), full loop with fake LLM (returns tool call → observation → final text), iteration limit stops the loop, denied tool call is reported and loop continues, multiple sequential tool calls. |
+| `tests/unit/core/test_session.py` | Message CRUD, tool-call/observation pairing, usage tracking, history retrieval, observation truncation. |
+| `tests/unit/core/test_context_manager.py` | Messages are trimmed, recent messages preserved, tool-call groups never split, history starts with a user turn, input is not mutated. |
+| `tests/unit/core/test_quota_tracker.py` | Local quota persistence, atomic private writes, sliding 5-hour and 7-day windows, percentage calculation, corrupt-state tolerance. |
+| `tests/unit/core/test_streaming.py` | `AgentEvent` construction, immutability, and mapping of text, thinking, tool, error, usage, and done events. |
+| `tests/integration/test_agent_loop.py` | Full loop with fake LLM (returns text), full loop with fake LLM (returns tool call → observation → final text), iteration limit stops the loop, denied tool call is reported and loop continues, multiple tool calls in one turn, unknown tool and tool failure observations, LLM errors, approval policy. |
+| `tests/unit/core/test_phase7_acceptance.py` | One check per Phase 7 acceptance criterion, including the rule that `core` never imports `cli` or `tui`. |
 
 **Fake implementations for integration tests:**
 
 ```python
 # tests/fixtures/fake_llm.py
 class FakeLLMClient:
-    """Returns pre-configured responses in sequence."""
-    def __init__(self, responses: list[ModelResponse]) -> None: ...
+    """Returns scripted stream events in sequence."""
+    def __init__(
+        self,
+        responses: Sequence[Sequence[StreamEvent] | BaseException],
+    ) -> None: ...
 
 # tests/fixtures/fake_tools.py
 class FakeTool(BaseTool):
-    """Returns a pre-configured ToolResult."""
-    def __init__(self, name: str, result: ToolResult) -> None: ...
+    """Records calls and returns a pre-configured ToolResult."""
+    def __init__(
+        self,
+        name: str = "fake_tool",
+        *,
+        result: ToolResult | None = None,
+        risk_level: RiskLevel = RiskLevel.READ,
+    ) -> None: ...
 ```
 
 ### 9.7 Acceptance criteria
 
-- [ ] Agent processes a simple text query (no tools) and yields
+- [x] Agent processes a simple text query (no tools) and yields
   `TEXT_CHUNK` → `DONE`.
-- [ ] Agent processes a query requiring one tool call: yields
+- [x] Agent processes a query requiring one tool call: yields
   `TOOL_CALL_START` → `TOOL_CALL_END` → `TEXT_CHUNK` → `DONE`.
-- [ ] Agent stops at `max_agent_iterations` and yields `ERROR` → `DONE`.
-- [ ] Denied tool call produces an observation but does not crash the loop.
-- [ ] Context manager trims old messages when history is too long.
-- [ ] `QuotaTracker` accurately accumulates tokens and calculates 5h/weekly windows.
-- [ ] Session tracks cumulative token usage accurately.
-- [ ] No component imports from `cli/` or `tui/`.
-- [ ] All tests pass: `uv run pytest tests/unit/core/ tests/integration/`.
+- [x] Agent stops at `max_agent_iterations` and yields `ERROR` → `DONE`.
+- [x] Denied tool call produces an observation but does not crash the loop.
+- [x] Context manager trims old messages when history is too long.
+- [x] `QuotaTracker` accurately accumulates tokens and calculates 5h/weekly windows.
+- [x] Session tracks cumulative token usage accurately.
+- [x] No component imports from `cli/` or `tui/`.
+- [x] All tests pass: `uv run pytest tests/unit/core/ tests/integration/`.
 
 ---
 
