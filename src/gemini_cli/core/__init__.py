@@ -6,11 +6,19 @@ from gemini_cli.core.context_manager import (
     estimate_messages,
     estimate_tokens,
 )
+from gemini_cli.core.quota_tracker import (
+    QuotaTracker,
+    QuotaWindowStatus,
+    UsageRecord,
+)
 from gemini_cli.core.session import Session
 
 __all__ = [
     "ContextManager",
+    "QuotaTracker",
+    "QuotaWindowStatus",
     "Session",
+    "UsageRecord",
     "estimate_message_tokens",
     "estimate_messages",
     "estimate_tokens",

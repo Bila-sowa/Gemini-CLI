@@ -22,6 +22,8 @@ from gemini_cli.config.defaults import (
     DEFAULT_MAX_INPUT_CHARS,
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_MODEL,
+    DEFAULT_QUOTA_5H_TOKEN_LIMIT,
+    DEFAULT_QUOTA_WEEKLY_TOKEN_LIMIT,
     DEFAULT_REQUEST_TIMEOUT_MS,
     DEFAULT_RETRY_ATTEMPTS,
     DEFAULT_ROLE,
@@ -105,6 +107,13 @@ class Settings(BaseSettings):
     max_input_chars: int = Field(default=DEFAULT_MAX_INPUT_CHARS, ge=100)
     max_agent_iterations: int = Field(default=DEFAULT_MAX_AGENT_ITERATIONS, ge=1)
     max_output_tokens: int = Field(default=DEFAULT_MAX_OUTPUT_TOKENS, ge=1)
+
+    # --- Quota ---
+    quota_5h_token_limit: int = Field(default=DEFAULT_QUOTA_5H_TOKEN_LIMIT, gt=0)
+    quota_weekly_token_limit: int = Field(
+        default=DEFAULT_QUOTA_WEEKLY_TOKEN_LIMIT,
+        gt=0,
+    )
 
     # --- Filesystem ---
     allowed_roots: list[Path] = Field(default_factory=list)
