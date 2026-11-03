@@ -307,3 +307,40 @@ async def test_select_from_menu_uses_application() -> None:
         repl._build_menu_application = original
 
     assert selected == options[1]
+
+
+def test_default_theme_has_expected_styles() -> None:
+    from gemini_cli.cli.tui.themes import DEFAULT_THEME
+
+    assert DEFAULT_THEME.name == "dark"
+    assert DEFAULT_THEME.assistant_color == "bright_cyan"
+    assert DEFAULT_THEME.error_color == "red"
+
+
+def test_get_theme_is_case_insensitive() -> None:
+    from gemini_cli.cli.tui.themes import LIGHT_THEME, get_theme
+
+    assert get_theme("LIGHT") is LIGHT_THEME
+
+
+def test_get_theme_rejects_unknown_names() -> None:
+    from gemini_cli.cli.tui.themes import UnknownThemeError, get_theme
+
+    with pytest.raises(UnknownThemeError, match="solarized"):
+        get_theme("solarized")
+
+
+async def test_repl_accepts_a_theme() -> None:
+    from gemini_cli.cli.tui.themes import LIGHT_THEME
+
+    runtime = FakeRuntime([AgentEvent(AgentEventType.DONE)])
+    write, parts = collector()
+
+    await run_repl(
+        runtime,
+        input_func=scripted_input(["hi"]),
+        output=write,
+        theme=LIGHT_THEME,
+    )
+
+    assert "GEMINI CLI" in "".join(parts)

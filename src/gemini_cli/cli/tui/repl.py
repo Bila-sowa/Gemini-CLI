@@ -26,6 +26,7 @@ from gemini_cli import __version__
 from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.auth.credentials_store import delete_api_key
 from gemini_cli.cli.runtime import CliRuntime, build_runtime
+from gemini_cli.cli.tui.themes import DEFAULT_THEME, Theme
 from gemini_cli.config.defaults import AVAILABLE_ROLES
 from gemini_cli.core.quota_tracker import QuotaWindowStatus
 from gemini_cli.core.session import Session
@@ -231,9 +232,11 @@ class ConsoleApprovalCallback:
         *,
         input_func: Callable[[str], str] | None = None,
         console: Console | None = None,
+        theme: Theme = DEFAULT_THEME,
     ) -> None:
         self._input = input_func if input_func is not None else input
         self._console = console if console is not None else Console()
+        self._theme = theme
 
     async def request_approval(
         self,
@@ -243,9 +246,14 @@ class ConsoleApprovalCallback:
     ) -> ApprovalDecision:
         self._console.print(
             f"\nApproval required ({risk_level}): {action_description}",
+            style=self._theme.header_style,
             highlight=False,
         )
-        self._console.print(f"  {details}", highlight=False)
+        self._console.print(
+            f"  {details}",
+            style=self._theme.info_color,
+            highlight=False,
+        )
         try:
             answer = self._input("Approve? [y/N]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
@@ -326,11 +334,28 @@ def _make_prompt_session() -> Any:
     return PromptSession(completer=completer, history=history)
 
 
-def _rich_writer(console: Console) -> Callable[[str], None]:
-    def write(text: str) -> None:
-        console.print(text, end="", highlight=False, markup=False)
+Writer = Callable[..., None]
 
-    return write
+
+def _make_writer(
+    output: Callable[[str], None] | None,
+    theme: Theme,
+) -> Writer:
+    """Build a plain writer for tests or a styled Rich writer for terminals."""
+    if output is not None:
+
+        def plain(text: str, *, style: str | None = None) -> None:
+            del style
+            output(text)
+
+        return plain
+
+    console = Console()
+
+    def rich(text: str, *, style: str | None = None) -> None:
+        console.print(text, end="", style=style, highlight=False, markup=False)
+
+    return rich
 
 
 async def _default_rebuild(
@@ -363,15 +388,16 @@ async def run_repl(
     output: Callable[[str], None] | None = None,
     menu_func: MenuFunc | None = None,
     rebuild: RebuildFunc | None = None,
+    theme: Theme = DEFAULT_THEME,
 ) -> None:
     """Run the interactive conversation until the user exits."""
-    write = output if output is not None else _rich_writer(Console())
+    write = _make_writer(output, theme)
     read = input_func
     menu = menu_func if menu_func is not None else select_from_menu
     rebuild_runtime = rebuild if rebuild is not None else _default_rebuild
 
     session = _new_session(runtime)
-    write(render_header(runtime))
+    write(render_header(runtime), style=theme.header_style)
 
     prompt_session: Any = None
     if read is None:
@@ -407,39 +433,41 @@ async def run_repl(
                 write=write,
                 menu=menu,
                 rebuild=rebuild_runtime,
+                theme=theme,
             )
             if outcome is None:
                 return
             runtime, session = outcome
             continue
 
-        write(f"User: {message}\n")
-        await _run_turn(runtime, session, message, write)
+        write(f"User: {message}\n", style=theme.user_color)
+        await _run_turn(runtime, session, message, write, theme)
 
 
 async def _run_turn(
     runtime: CliRuntime,
     session: Session,
     message: str,
-    write: Callable[[str], None],
+    write: Writer,
+    theme: Theme,
 ) -> None:
     prefix_pending = True
     async for event in runtime.agent.run(session, message):
         if event.event_type is AgentEventType.TEXT_CHUNK:
             if prefix_pending:
-                write(_ANSWER_PREFIX)
+                write(_ANSWER_PREFIX, style=theme.assistant_color)
                 prefix_pending = False
-            write(str(event.data))
+            write(str(event.data), style=theme.assistant_color)
         elif event.event_type is AgentEventType.THINKING:
             continue
         elif event.event_type is AgentEventType.ERROR:
             if prefix_pending:
-                write(_ANSWER_PREFIX)
+                write(_ANSWER_PREFIX, style=theme.assistant_color)
                 prefix_pending = False
-            write(f"\nError: {event.data}\n")
+            write(f"\nError: {event.data}\n", style=theme.error_color)
         elif event.event_type is AgentEventType.DONE:
             if prefix_pending:
-                write(_ANSWER_PREFIX)
+                write(_ANSWER_PREFIX, style=theme.assistant_color)
                 prefix_pending = False
             write("\n")
 
@@ -449,18 +477,19 @@ async def _handle_slash(
     runtime: CliRuntime,
     session: Session,
     *,
-    write: Callable[[str], None],
+    write: Writer,
     menu: MenuFunc,
     rebuild: RebuildFunc,
+    theme: Theme,
 ) -> tuple[CliRuntime, Session] | None:
     name = command.name
 
     if name == "/help":
-        write(render_help())
+        write(render_help(), style=theme.info_color)
         return runtime, session
 
     if name == "/clear":
-        write("Conversation cleared.\n")
+        write("Conversation cleared.\n", style=theme.info_color)
         return runtime, _new_session(runtime)
 
     if name == "/quota":
@@ -468,64 +497,80 @@ async def _handle_slash(
             render_quota_panel(
                 runtime.quota.get_5h_status(),
                 runtime.quota.get_weekly_status(),
-            )
+            ),
+            style=theme.border_style,
         )
         return runtime, session
 
     if name == "/role":
         selected = await menu(role_options(), "Roles:")
         if selected is None:
-            write("Selection cancelled.\n")
+            write("Selection cancelled.\n", style=theme.info_color)
             return runtime, session
         return await _rebuild(
             runtime,
             session,
             write,
             rebuild,
+            theme,
             role=selected.value,
         )
 
     if name == "/model":
         selected = await menu(model_options(), "Models:")
         if selected is None:
-            write("Selection cancelled.\n")
+            write("Selection cancelled.\n", style=theme.info_color)
             return runtime, session
         return await _rebuild(
             runtime,
             session,
             write,
             rebuild,
+            theme,
             model=selected.value,
         )
 
     if name == "/auth":
         selected = await menu(AUTH_OPTIONS, "Authentication methods:")
         if selected is None:
-            write("Selection cancelled.\n")
+            write("Selection cancelled.\n", style=theme.info_color)
         elif selected.value == "api_key":
-            write("Run 'gemini-cli-py login' to store an API key.\n")
+            write(
+                "Run 'gemini-cli-py login' to store an API key.\n",
+                style=theme.info_color,
+            )
         else:
-            write("Google OAuth is not available yet.\n")
+            write(
+                "Google OAuth is not available yet.\n",
+                style=theme.info_color,
+            )
         return runtime, session
 
     if name == "/reset":
         try:
             delete_api_key()
         except CredentialStoreError as exc:
-            write(f"Error: {exc}\n")
+            write(f"Error: {exc}\n", style=theme.error_color)
         else:
-            write("Stored API key removed. Run 'gemini-cli-py login' again.\n")
+            write(
+                "Stored API key removed. Run 'gemini-cli-py login' again.\n",
+                style=theme.info_color,
+            )
         return runtime, session
 
-    write(f"Unknown command {name}. Type /help for available commands.\n")
+    write(
+        f"Unknown command {name}. Type /help for available commands.\n",
+        style=theme.error_color,
+    )
     return runtime, session
 
 
 async def _rebuild(
     runtime: CliRuntime,
     session: Session,
-    write: Callable[[str], None],
+    write: Writer,
     rebuild: RebuildFunc,
+    theme: Theme,
     *,
     model: str | None = None,
     role: str | None = None,
@@ -538,12 +583,12 @@ async def _rebuild(
         UnknownModelError,
         PromptError,
     ) as exc:
-        write(f"Error: {exc}\n")
+        write(f"Error: {exc}\n", style=theme.error_color)
         return runtime, session
 
     session.model = replacement.settings.model
     session.role = replacement.settings.role
-    write(render_header(replacement))
+    write(render_header(replacement), style=theme.header_style)
     return replacement, session
 
 
