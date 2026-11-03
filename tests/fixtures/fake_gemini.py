@@ -104,10 +104,18 @@ class FakeModels:
     def __init__(self) -> None:
         self.generate_calls: list[dict[str, Any]] = []
         self.stream_calls: list[dict[str, Any]] = []
+        self.list_calls: list[dict[str, Any]] = []
         self.generate_responses: list[types.GenerateContentResponse] = []
         self.generate_errors: list[Exception] = []
         self.chunks: list[types.GenerateContentResponse] = []
         self.stream_error: Exception | None = None
+        self.list_error: Exception | None = None
+
+    async def list(self, **kwargs: Any) -> Any:
+        self.list_calls.append(kwargs)
+        if self.list_error is not None:
+            raise self.list_error
+        return SimpleNamespace(page=[])
 
     async def generate_content(self, **kwargs: Any) -> types.GenerateContentResponse:
         self.generate_calls.append(kwargs)

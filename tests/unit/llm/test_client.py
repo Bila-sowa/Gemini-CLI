@@ -547,3 +547,26 @@ def test_partial_args_support_array_indexes() -> None:
 
     assert completed is not None
     assert completed.arguments == {"edits": [None, {"text": "x"}]}
+
+
+async def test_verify_lists_a_model(settings, fake_sdk) -> None:
+    client = GeminiClient(settings, api_key=TEST_KEY)
+    try:
+        await client.verify()
+    finally:
+        client.close()
+
+    assert fake_sdk.models.list_calls
+    assert fake_sdk.models.list_calls[0]["config"] == {"page_size": 1}
+
+
+async def test_verify_maps_api_errors(settings, fake_sdk) -> None:
+    fake_sdk.models.list_error = FakeApiError(401)
+    client = GeminiClient(settings, api_key=TEST_KEY)
+    try:
+        with pytest.raises(LLMError) as excinfo:
+            await client.verify()
+    finally:
+        client.close()
+
+    assert excinfo.value.status == 401

@@ -16,7 +16,7 @@ from gemini_cli.cli.app import app
 from gemini_cli.cli.runtime import build_runtime
 from gemini_cli.cli.tui.repl import ConsoleApprovalCallback
 from gemini_cli.config import Settings
-from gemini_cli.llm import UnknownModelError
+from gemini_cli.llm import LLMError, UnknownModelError
 
 runner = CliRunner()
 
@@ -247,3 +247,151 @@ def test_chat_reports_authentication_error(
     result = runner.invoke(app, ["chat"])
 
     assert result.exit_code == 1
+
+
+def test_login_stores_key_without_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stored: list[str] = []
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.auth.store_api_key",
+        stored.append,
+    )
+
+    result = runner.invoke(
+        app,
+        ["login", "--api-key", "secret-key", "--no-verify"],
+    )
+
+    assert result.exit_code == 0
+    assert stored == ["secret-key"]
+    assert "secret-key" not in result.stdout
+
+
+def test_login_prompts_for_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    stored: list[str] = []
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.auth.store_api_key",
+        stored.append,
+    )
+
+    result = runner.invoke(
+        app,
+        ["login", "--no-verify"],
+        input="prompted-key\n",
+    )
+
+    assert result.exit_code == 0
+    assert stored == ["prompted-key"]
+
+
+def test_login_verifies_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    verified: list[str] = []
+    stored: list[str] = []
+
+    async def fake_verify(key: str) -> None:
+        verified.append(key)
+
+    monkeypatch.setattr("gemini_cli.cli.commands.auth._verify_key", fake_verify)
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.auth.store_api_key",
+        stored.append,
+    )
+
+    result = runner.invoke(app, ["login", "--api-key", "checked-key"])
+
+    assert result.exit_code == 0
+    assert verified == ["checked-key"]
+    assert stored == ["checked-key"]
+
+
+def test_login_rejects_failed_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stored: list[str] = []
+
+    async def failing_verify(key: str) -> None:
+        del key
+        raise LLMError("bad key")
+
+    monkeypatch.setattr("gemini_cli.cli.commands.auth._verify_key", failing_verify)
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.auth.store_api_key",
+        stored.append,
+    )
+
+    result = runner.invoke(app, ["login", "--api-key", "bad-key"])
+
+    assert result.exit_code == 1
+    assert stored == []
+
+
+def test_login_rejects_empty_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    stored: list[str] = []
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.auth.store_api_key",
+        stored.append,
+    )
+
+    result = runner.invoke(
+        app,
+        ["login", "--no-verify", "--api-key", " "],
+        input="\n",
+    )
+
+    assert result.exit_code == 1
+    assert stored == []
+
+
+def test_logout_deletes_stored_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    deleted: list[bool] = []
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.auth.delete_api_key",
+        lambda: deleted.append(True),
+    )
+
+    result = runner.invoke(app, ["logout"])
+
+    assert result.exit_code == 0
+    assert deleted == [True]
+
+
+def test_status_reports_keyring_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "gemini_cli.auth.api_key.load_api_key",
+        lambda: "stored-secret",
+    )
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 0
+    assert "keyring" in result.stdout
+    assert "stored-secret" not in result.stdout
+
+
+def test_status_reports_environment_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "env-secret")
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 0
+    assert "environment" in result.stdout
+    assert "env-secret" not in result.stdout
+
+
+def test_status_reports_missing_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "gemini_cli.auth.api_key.load_api_key",
+        lambda: None,
+    )
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 1
+    assert "not configured" in result.stdout
