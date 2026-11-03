@@ -9,7 +9,7 @@ import typer
 
 from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.cli.runtime import build_runtime
-from gemini_cli.cli.tui.app import run_tui
+from gemini_cli.cli.tui.app import TuiApprovalBridge, run_tui
 from gemini_cli.cli.tui.repl import ConsoleApprovalCallback, run_repl
 from gemini_cli.config import Settings
 
@@ -52,15 +52,17 @@ def chat(
 
 async def _chat(model: str | None, role: str | None, no_tui: bool) -> None:
     settings = Settings()
+    use_tui = _use_tui(no_tui)
+    bridge = TuiApprovalBridge() if use_tui else None
     runtime = await build_runtime(
         settings,
         model=model,
         role=role,
-        approval_callback=ConsoleApprovalCallback(),
+        approval_callback=bridge if bridge is not None else ConsoleApprovalCallback(),
     )
     try:
-        if _use_tui(no_tui):
-            await run_tui(runtime)
+        if use_tui and bridge is not None:
+            await run_tui(runtime, bridge=bridge)
         else:
             await run_repl(runtime)
     finally:

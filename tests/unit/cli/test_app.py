@@ -593,7 +593,8 @@ def test_chat_uses_tui_when_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
         del settings, kwargs
         return FakeRuntime()
 
-    async def fake_tui(runtime: object) -> None:
+    async def fake_tui(runtime: object, **kwargs: object) -> None:
+        del kwargs
         tui_calls.append(runtime)
 
     async def fake_repl(runtime: object) -> None:

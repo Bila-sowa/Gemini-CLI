@@ -400,3 +400,113 @@ async def test_tui_accepts_prompt_input() -> None:
         await pilot.press("h", "i", "enter")
         await pilot.pause()
         assert "User: hi" in app.transcript
+
+
+async def test_tui_streams_agent_turn() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(
+        FakeRuntime(
+            [
+                AgentEvent(AgentEventType.TEXT_CHUNK, "Hel"),
+                AgentEvent(AgentEventType.TEXT_CHUNK, "lo"),
+                AgentEvent(AgentEventType.DONE),
+            ]
+        )
+    )
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("h", "i", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert "User: hi" in app.transcript
+    assert any(line == "✦: Hello" for line in app.transcript)
+
+
+async def test_tui_renders_agent_error() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(
+        FakeRuntime(
+            [
+                AgentEvent(AgentEventType.ERROR, "boom"),
+                AgentEvent(AgentEventType.DONE),
+            ]
+        )
+    )
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("h", "i", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("Error: boom" in line for line in app.transcript)
+
+
+async def test_approval_screen_approves_with_y() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.widgets import ApprovalScreen
+
+    app = GeminiApp(FakeRuntime())
+    results: list[bool | None] = []
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.push_screen(
+            ApprovalScreen("run a tool", "write", "path: a"),
+            callback=results.append,
+        )
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+
+    assert results == [True]
+
+
+async def test_approval_screen_denies_with_escape() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.widgets import ApprovalScreen
+
+    app = GeminiApp(FakeRuntime())
+    results: list[bool | None] = []
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.push_screen(
+            ApprovalScreen("run a tool", "write", "path: a"),
+            callback=results.append,
+        )
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+    assert results == [False]
+
+
+async def test_approval_bridge_denies_without_app() -> None:
+    from gemini_cli.cli.tui.app import TuiApprovalBridge
+
+    bridge = TuiApprovalBridge()
+
+    decision = await bridge.request_approval("run", "write", "path: a")
+
+    assert decision is ApprovalDecision.DENIED
+
+
+async def test_approval_bridge_routes_to_the_app() -> None:
+    from gemini_cli.cli.tui.app import TuiApprovalBridge
+
+    class FakeApp:
+        def __init__(self, approved: bool) -> None:
+            self.approved = approved
+
+        async def request_approval(self, *args: object) -> bool:
+            del args
+            return self.approved
+
+    bridge = TuiApprovalBridge()
+    bridge.attach(FakeApp(True))  # type: ignore[arg-type]
+
+    assert (
+        await bridge.request_approval("run", "write", "path: a")
+        is ApprovalDecision.APPROVED
+    )

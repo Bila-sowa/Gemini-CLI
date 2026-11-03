@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+from typing import ClassVar
+
 from rich.text import Text
-from textual.widgets import Static
+from textual.app import ComposeResult
+from textual.binding import BindingType
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
+from textual.widgets import Button, Static
 
 from gemini_cli import __version__
 
@@ -96,6 +102,74 @@ class RoleBar(Static):
         self.update(text)
 
 
+class MessageView(Static):
+    """One user or assistant message that can grow while streaming."""
+
+    def __init__(self, prefix: str, prefix_style: str) -> None:
+        super().__init__(classes="message")
+        self._text = Text(prefix, style=prefix_style)
+        self.update(self._text)
+
+    @property
+    def plain(self) -> str:
+        """Plain text of the whole message."""
+        return self._text.plain
+
+    def append(self, chunk: str, style: str | None = None) -> None:
+        """Append streamed text and refresh the widget."""
+        self._text.append(chunk, style=style)
+        self.update(self._text)
+
+
+class ApprovalScreen(ModalScreen[bool]):
+    """Modal confirmation for a sensitive tool call."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        ("y", "approve", "Approve"),
+        ("n", "deny", "Deny"),
+        ("escape", "deny", "Deny"),
+    ]
+
+    def __init__(
+        self,
+        action_description: str,
+        risk_level: str,
+        details: str,
+    ) -> None:
+        super().__init__()
+        self._action = action_description
+        self._risk = risk_level
+        self._details = details
+
+    def compose(self) -> ComposeResult:
+        title = Text()
+        title.append("Approval required", style=f"bold {GEMINI_ORANGE}")
+        title.append(f"  ({self._risk})", style=GEMINI_MUTED)
+
+        with Vertical(id="approval"):
+            yield Static(title, id="approval-title")
+            yield Static(
+                Text(self._action, style="bold white"),
+                id="approval-action",
+            )
+            yield Static(
+                Text(self._details, style=GEMINI_MUTED),
+                id="approval-details",
+            )
+            with Horizontal(id="approval-buttons"):
+                yield Button("Approve", id="approve", variant="success")
+                yield Button("Deny", id="deny", variant="error")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "approve")
+
+    def action_approve(self) -> None:
+        self.dismiss(True)
+
+    def action_deny(self) -> None:
+        self.dismiss(False)
+
+
 __all__ = [
     "GEMINI_BLUE",
     "GEMINI_BORDER",
@@ -104,7 +178,9 @@ __all__ = [
     "GEMINI_MUTED",
     "GEMINI_ORANGE",
     "GEMINI_RED",
+    "ApprovalScreen",
     "Logo",
+    "MessageView",
     "RoleBar",
     "StatusBar",
     "compact_tokens",
