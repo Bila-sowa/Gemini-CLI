@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 from gemini_cli.config import Settings
+from gemini_cli.sandbox.approval import (
+    ApprovalCallback,
+    ApprovalDecision,
+    ApprovalError,
+    ApprovalManager,
+    ApprovalUnavailableError,
+)
 from gemini_cli.sandbox.base import ExecutionResult, SandboxBackend, SandboxError
 from gemini_cli.sandbox.docker_backend import DockerBackend
 from gemini_cli.sandbox.subprocess_backend import SubprocessBackend
@@ -27,6 +34,11 @@ async def select_backend(
 
 
 __all__ = [
+    "ApprovalCallback",
+    "ApprovalDecision",
+    "ApprovalError",
+    "ApprovalManager",
+    "ApprovalUnavailableError",
     "DockerBackend",
     "ExecutionResult",
     "SandboxBackend",
