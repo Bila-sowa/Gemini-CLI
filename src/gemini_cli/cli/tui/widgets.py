@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import ClassVar
 
 from rich.text import Text
@@ -9,9 +10,11 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Static
+from textual.widgets import Button, OptionList, Static
+from textual.widgets.option_list import Option
 
 from gemini_cli import __version__
+from gemini_cli.cli.tui.repl import MenuOption
 
 GEMINI_BLUE = "#5B9BD5"
 GEMINI_ORANGE = "#D99A3D"
@@ -170,6 +173,50 @@ class ApprovalScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class MenuScreen(ModalScreen[MenuOption | None]):
+    """Modal list used for role, model, and authentication selection."""
+
+    BINDINGS: ClassVar[list[BindingType]] = [
+        ("escape", "cancel", "Cancel"),
+    ]
+
+    def __init__(self, options: Sequence[MenuOption], title: str) -> None:
+        super().__init__()
+        self._options = tuple(options)
+        self._title = title
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="menu"):
+            yield Static(
+                Text(self._title, style=f"bold {GEMINI_BLUE}"),
+                id="menu-title",
+            )
+            yield OptionList(
+                *[
+                    Option(
+                        Text.assemble(
+                            (option.label, "bold white"),
+                            (f" - {option.description}", GEMINI_MUTED),
+                        )
+                    )
+                    for option in self._options
+                ],
+                id="menu-list",
+            )
+
+    def on_mount(self) -> None:
+        self.query_one("#menu-list", OptionList).focus()
+
+    def on_option_list_option_selected(
+        self,
+        event: OptionList.OptionSelected,
+    ) -> None:
+        self.dismiss(self._options[event.option_index])
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 __all__ = [
     "GEMINI_BLUE",
     "GEMINI_BORDER",
@@ -180,6 +227,7 @@ __all__ = [
     "GEMINI_RED",
     "ApprovalScreen",
     "Logo",
+    "MenuScreen",
     "MessageView",
     "RoleBar",
     "StatusBar",

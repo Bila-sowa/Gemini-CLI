@@ -15,19 +15,31 @@ from textual.binding import BindingType
 from textual.containers import VerticalScroll
 from textual.widgets import Input
 
-from gemini_cli.cli.runtime import CliRuntime
+from gemini_cli.auth import AuthenticationError, CredentialStoreError
+from gemini_cli.auth.credentials_store import delete_api_key
+from gemini_cli.cli.runtime import CliRuntime, build_runtime
+from gemini_cli.cli.tui.repl import (
+    AUTH_OPTIONS,
+    model_options,
+    parse_slash_command,
+    render_help,
+    role_options,
+)
 from gemini_cli.cli.tui.widgets import (
     GEMINI_BLUE,
     GEMINI_MUTED,
     GEMINI_RED,
     ApprovalScreen,
     Logo,
+    MenuScreen,
     MessageView,
     RoleBar,
     StatusBar,
 )
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEventType
+from gemini_cli.llm import UnknownModelError
+from gemini_cli.llm.prompts import PromptError
 from gemini_cli.sandbox.approval import ApprovalDecision
 
 
@@ -102,15 +114,42 @@ class GeminiApp(App[None]):
     #approval-buttons Button {
         margin-left: 2;
     }
+    MenuScreen {
+        align: center middle;
+        background: #101214;
+    }
+    #menu {
+        width: 84;
+        height: auto;
+        max-height: 24;
+        border: round #3A3F45;
+        background: #24272B;
+        padding: 1 2;
+    }
+    #menu-title {
+        height: auto;
+        margin-bottom: 1;
+    }
+    #menu-list {
+        height: auto;
+        max-height: 18;
+        background: #24272B;
+    }
     """
 
     BINDINGS: ClassVar[list[BindingType]] = [
         ("ctrl+q", "quit", "Quit"),
     ]
 
-    def __init__(self, runtime: CliRuntime) -> None:
+    def __init__(
+        self,
+        runtime: CliRuntime,
+        *,
+        bridge: TuiApprovalBridge | None = None,
+    ) -> None:
         super().__init__()
         self.runtime = runtime
+        self._bridge = bridge
         self.transcript: list[str] = []
         self.session = Session(
             model=runtime.settings.model,
@@ -135,6 +174,13 @@ class GeminiApp(App[None]):
         if not message:
             return
         self._write_user(message)
+        if message.startswith("/"):
+            self.run_worker(
+                self._handle_slash(message),
+                group="ui",
+                exclusive=True,
+            )
+            return
         self.run_worker(
             self._run_turn(message),
             group="agent",
@@ -151,6 +197,104 @@ class GeminiApp(App[None]):
         return await self.push_screen_wait(
             ApprovalScreen(action_description, risk_level, details)
         )
+
+    async def _handle_slash(self, message: str) -> None:
+        command = parse_slash_command(message)
+        if command is None:
+            return
+        name = command.name
+
+        if name in {"/exit", "/quit"}:
+            self.exit()
+            return
+
+        if name == "/help":
+            self._write_info(render_help().rstrip())
+            return
+
+        if name == "/clear":
+            self.query_one("#conversation", VerticalScroll).remove_children()
+            self.session = Session(
+                model=self.runtime.settings.model,
+                role=self.runtime.settings.role,
+            )
+            self._write_info("Conversation cleared.")
+            return
+
+        if name == "/role":
+            selected = await self.push_screen_wait(MenuScreen(role_options(), "Roles:"))
+            if selected is not None:
+                await self._rebuild(role=selected.value)
+            return
+
+        if name == "/model":
+            selected = await self.push_screen_wait(
+                MenuScreen(model_options(), "Models:")
+            )
+            if selected is not None:
+                await self._rebuild(model=selected.value)
+            return
+
+        if name == "/auth":
+            selected = await self.push_screen_wait(
+                MenuScreen(AUTH_OPTIONS, "Authentication methods:")
+            )
+            if selected is None:
+                return
+            if selected.value == "api_key":
+                self._write_info("Run 'gemini-cli-py login' to store an API key.")
+            else:
+                self._write_info("Google OAuth is not available yet.")
+            return
+
+        if name == "/reset":
+            try:
+                delete_api_key()
+            except CredentialStoreError as exc:
+                self._write_info(f"Error: {exc}")
+            else:
+                self._write_info(
+                    "Stored API key removed. Run 'gemini-cli-py login' again."
+                )
+            return
+
+        if name == "/quota":
+            self._write_info("The quota panel arrives in Phase 8.14.")
+            return
+
+        if name == "/theme":
+            self._write_info("Theme switching arrives in Phase 8.15.")
+            return
+
+        self._write_info(f"Unknown command {name}. Type /help for available commands.")
+
+    async def _rebuild(
+        self,
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> None:
+        try:
+            replacement = await build_runtime(
+                self.runtime.settings,
+                model=model,
+                role=role,
+                approval_callback=self._bridge,
+            )
+        except (
+            AuthenticationError,
+            CredentialStoreError,
+            UnknownModelError,
+            PromptError,
+        ) as exc:
+            self._write_info(f"Error: {exc}")
+            return
+
+        self.runtime.close()
+        self.runtime = replacement
+        self.session.model = replacement.settings.model
+        self.session.role = replacement.settings.role
+        self._refresh_status()
 
     async def _run_turn(self, message: str) -> None:
         prompt = self.query_one("#prompt", Input)
@@ -242,7 +386,7 @@ async def run_tui(
     bridge: TuiApprovalBridge | None = None,
 ) -> None:
     """Run the full-screen terminal application."""
-    app = GeminiApp(runtime)
+    app = GeminiApp(runtime, bridge=bridge)
     if bridge is not None:
         bridge.attach(app)
     await app.run_async()

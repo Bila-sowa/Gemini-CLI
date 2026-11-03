@@ -510,3 +510,127 @@ async def test_approval_bridge_routes_to_the_app() -> None:
         await bridge.request_approval("run", "write", "path: a")
         is ApprovalDecision.APPROVED
     )
+
+
+async def test_menu_screen_selects_with_enter() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.repl import role_options
+    from gemini_cli.cli.tui.widgets import MenuScreen
+
+    app = GeminiApp(FakeRuntime())
+    results: list[object] = []
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.push_screen(
+            MenuScreen(role_options(), "Roles:"),
+            callback=results.append,
+        )
+        await pilot.pause()
+        await pilot.press("down", "enter")
+        await pilot.pause()
+
+    assert results
+    assert getattr(results[0], "value", None) == "code"
+
+
+async def test_menu_screen_cancels_with_escape() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.repl import role_options
+    from gemini_cli.cli.tui.widgets import MenuScreen
+
+    app = GeminiApp(FakeRuntime())
+    results: list[object] = []
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        app.push_screen(
+            MenuScreen(role_options(), "Roles:"),
+            callback=results.append,
+        )
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+    assert results == [None]
+
+
+async def test_tui_help_lists_commands() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "h", "e", "l", "p", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("Commands:" in line for line in app.transcript)
+    assert any("/quota" in line for line in app.transcript)
+
+
+async def test_tui_unknown_command_is_reported() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "n", "o", "p", "e", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("Unknown command /nope" in line for line in app.transcript)
+
+
+async def test_tui_role_menu_calls_rebuild(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+    calls: list[tuple[str | None, str | None]] = []
+
+    async def fake_rebuild(
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> None:
+        calls.append((model, role))
+
+    monkeypatch.setattr(app, "_rebuild", fake_rebuild)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "r", "o", "l", "e", "enter")
+        await pilot.pause()
+        await pilot.press("down", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert calls == [(None, "code")]
+
+
+async def test_tui_clear_resets_conversation() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "c", "l", "e", "a", "r", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("Conversation cleared" in line for line in app.transcript)
+
+
+async def test_tui_quota_and_theme_are_deferred() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "q", "u", "o", "t", "a", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.press("slash", "t", "h", "e", "m", "e", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("quota panel" in line for line in app.transcript)
+    assert any("Theme switching" in line for line in app.transcript)
