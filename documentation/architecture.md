@@ -144,19 +144,27 @@ as production usage.
 ### Application entry points and CLI
 
 `gemini_cli.__main__` is the module entry point for `python -m
-gemini_cli`. It should contain minimal bootstrapping and delegate command
+gemini_cli`. It contains minimal bootstrapping and delegates command
 registration and argument parsing to `cli/app.py`.
 
 The `cli` package is an adapter between users and the application core:
 
+- `app.py` registers commands and turns expected failures into exit codes;
+- `runtime.py` builds the agent runtime lazily — it resolves the API key,
+  loads project context, registers the built-in tools, selects the sandbox
+  backend, and assembles the agent;
 - `commands/chat.py` starts an interactive conversation;
 - `commands/run.py` performs a single non-interactive request and is suitable
   for scripts and CI jobs;
-- `commands/auth.py` manages login, logout, and OAuth flows;
-- `commands/mcp.py` manages configured MCP servers;
+- `commands/auth.py` manages login, logout, and status;
 - `commands/config.py` reads and updates user-facing configuration;
-- `tui/repl.py` renders the interactive Rich or Textual interface, while
-  `tui/themes.py` keeps presentation settings separate from behavior.
+- `commands/mcp.py` will manage configured MCP servers in Phase 9;
+- `tui/repl.py` renders the interactive terminal interface;
+- `tui/themes.py` keeps presentation settings separate from behavior.
+
+Commands that do not need the agent — help, version, auth, and config — never
+resolve credentials. The one-shot `run` command uses no approval callback, so
+destructive tools stay denied outside the interactive REPL.
 
 CLI modules should validate and normalize input, call application services,
 and format output. They should not implement agent reasoning, credential

@@ -1868,25 +1868,27 @@ def chat(
 def run(
     prompt: str = typer.Argument(..., help="The task to execute."),
     model: str = typer.Option(None),
+    role: str = typer.Option(None),
 ) -> None:
     """Execute a single prompt and print the result."""
-    # Creates a session, runs agent.run(), prints final text, exits.
+    # Creates a session, streams agent events, prints text, exits non-zero on
+    # an agent error. No approval callback: destructive tools stay denied.
 ```
 
 ### 10.4 Auth commands — `src/gemini_cli/cli/commands/auth.py`
 
-| Command                     | Behavior                                                           |
-| --------------------------- | ------------------------------------------------------------------ |
-| `gemini-cli-py login`       | Prompt for API key, store in keyring, verify with a test API call. |
-| `gemini-cli-py logout`      | Remove stored credentials from keyring.                            |
-| `gemini-cli-py auth status` | Show authentication method and validity.                           |
+| Command                     | Behavior                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| `gemini-cli-py login`       | Prompt for API key, store in keyring, verify with a test API call. `--no-verify` skips the check. |
+| `gemini-cli-py logout`      | Remove stored credentials from keyring.                                        |
+| `gemini-cli-py auth status` | Show authentication method and validity.                                       |
 
 ### 10.5 Config commands — `src/gemini_cli/cli/commands/config.py`
 
-| Command                                  | Behavior                                      |
-| ---------------------------------------- | --------------------------------------------- |
-| `gemini-cli-py config show`              | Print all resolved settings (redact API key). |
-| `gemini-cli-py config set <key> <value>` | Write to project or global config file.       |
+| Command                                  | Behavior                                                        |
+| ---------------------------------------- | --------------------------------------------------------------- |
+| `gemini-cli-py config show`              | Print all resolved settings (redact API key).                   |
+| `gemini-cli-py config set <key> <value>` | Write to the project config, or the global config with `--global`. |
 
 ### 10.6 TUI / REPL — `src/gemini_cli/cli/tui/repl.py`
 
@@ -1913,7 +1915,7 @@ styling, markdown rendering, headers, borders, and progress bars).
 4. **Quota Panel Integration:**
    Fed by `QuotaTracker` (Phase 7):
    - Reads 5-hour window token usage and remaining duration.
-   - Reads weekly rolling usage and Monday 09:00 reset timer.
+   - Reads weekly rolling usage and the time until the oldest record leaves the window.
    - Renders progress bars matching `Terminal-3.png`.
 
 Based on the UI mockups, the REPL should display:
@@ -1983,7 +1985,7 @@ Authentication methods:
 ```
 ═ QUOTA ═════════════════════════════════════════
   5h limit   ██████████░░░░░  72%   1h 24m remaining
-  Weekly     ████░░░░░░░░░░░  31%   resets Mon, 09:00
+  Weekly     ████░░░░░░░░░░░  31%   3d 00h remaining
 ```
 
 ### 10.7 Themes — `src/gemini_cli/cli/tui/themes.py`
@@ -2029,15 +2031,15 @@ DEFAULT_THEME = Theme(
 
 ### 10.9 Acceptance criteria
 
-- [ ] `gemini-cli-py chat` launches the REPL and displays the header.
-- [ ] `gemini-cli-py run "hello"` executes one prompt and exits.
-- [ ] `gemini-cli-py login` prompts for an API key and stores it.
-- [ ] `gemini-cli-py config show` prints all settings with the API key redacted.
-- [ ] Slash commands trigger the expected UI flow with prompt autocompletion.
-- [ ] The REPL displays streaming text character by character via Rich console.
-- [ ] Role, model, and auth selection prompts allow Up/Down arrow navigation and Escape cancellation.
-- [ ] `/quota` panel renders live percentages and timers calculated by `QuotaTracker`.
-- [ ] All tests pass: `uv run pytest tests/unit/cli/`.
+- [x] `gemini-cli-py chat` launches the REPL and displays the header.
+- [x] `gemini-cli-py run "hello"` executes one prompt and exits.
+- [x] `gemini-cli-py login` prompts for an API key and stores it.
+- [x] `gemini-cli-py config show` prints all settings with the API key redacted.
+- [x] Slash commands trigger the expected UI flow with prompt autocompletion.
+- [x] The REPL displays streaming text character by character via Rich console.
+- [x] Role, model, and auth selection prompts allow Up/Down arrow navigation and Escape cancellation.
+- [x] `/quota` panel renders live percentages and timers calculated by `QuotaTracker`.
+- [x] All tests pass: `uv run pytest tests/unit/cli/`.
 
 ---
 

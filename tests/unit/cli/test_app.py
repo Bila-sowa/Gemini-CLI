@@ -11,7 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from gemini_cli import __version__
-from gemini_cli.auth import AuthenticationError
+from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.auth.api_key import ResolvedApiKey
 from gemini_cli.cli.app import app
 from gemini_cli.cli.runtime import build_runtime
@@ -532,3 +532,45 @@ def test_config_set_rejects_invalid_boolean(
     )
 
     assert result.exit_code == 1
+
+
+def test_login_reports_keyring_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing_store(key: str) -> None:
+        del key
+        raise CredentialStoreError("keyring unavailable")
+
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.auth.store_api_key",
+        failing_store,
+    )
+
+    result = runner.invoke(
+        app,
+        ["login", "--api-key", "key", "--no-verify"],
+    )
+
+    assert result.exit_code == 1
+
+
+def test_status_reports_keyring_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def failing_load() -> str | None:
+        raise CredentialStoreError("keyring unavailable")
+
+    monkeypatch.setattr(
+        "gemini_cli.auth.api_key.load_api_key",
+        failing_load,
+    )
+
+    result = runner.invoke(app, ["auth", "status"])
+
+    assert result.exit_code == 1
+
+
+def test_run_requires_a_prompt() -> None:
+    result = runner.invoke(app, ["run"])
+
+    assert result.exit_code != 0

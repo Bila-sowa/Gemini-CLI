@@ -344,3 +344,34 @@ async def test_repl_accepts_a_theme() -> None:
     )
 
     assert "GEMINI CLI" in "".join(parts)
+
+
+async def test_repl_skips_blank_lines() -> None:
+    runtime = FakeRuntime()
+    write, _parts = collector()
+
+    await run_repl(runtime, input_func=scripted_input(["", "   "]), output=write)
+
+    assert runtime.agent.calls == []
+
+
+async def test_select_from_menu_cancels_on_none() -> None:
+    options = (MenuOption("a", "A"),)
+
+    class FakeApplication:
+        async def run_async(self) -> None:
+            return None
+
+    from gemini_cli.cli.tui import repl
+
+    original = repl._build_menu_application
+    repl._build_menu_application = lambda _options, _title: (
+        FakeApplication(),
+        MenuState(options),
+    )
+    try:
+        selected = await select_from_menu(options, "Pick")
+    finally:
+        repl._build_menu_application = original
+
+    assert selected is None

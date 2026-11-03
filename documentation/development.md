@@ -308,6 +308,27 @@ The agent depends on a small `ChatClient` protocol instead of importing the
 Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 `FakeTool` fixtures from `tests/fixtures/`.
 
+## CLI and terminal UI
+
+`gemini-cli-py` exposes `chat`, `run`, `login`, `logout`, `auth status`, and
+`config show` / `config set`.
+
+- `cli/runtime.py` builds the agent lazily. Only commands that need the agent
+  resolve credentials; `--help`, `--version`, auth, and config work before a
+  key exists. An empty `allowed_roots` defaults to the working directory.
+- `run` streams assistant text to stdout and exits non-zero on an agent error.
+  It passes no approval callback, so destructive tools remain denied.
+- `chat` starts the REPL. The REPL uses prompt_toolkit for input, history, and
+  slash-command completion, Rich for styled streaming output, and arrow-driven
+  menus for role, model, and authentication selection. Escape cancels a menu.
+- Slash commands: `/role`, `/model`, `/clear`, `/quota`, `/auth`, `/reset`,
+  `/help`, `/exit`, `/quit`.
+- `tui/themes.py` provides the dark and light themes; plain output used by
+  pipes and tests ignores styles.
+- `login` verifies the key against the API unless `--no-verify` is passed.
+  `config set` validates through `Settings`, refuses `api_key` and
+  `allowed_roots`, and writes to the project config or `--global`.
+
 ## Current status
 
 | Area | Status |
@@ -316,7 +337,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (592 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, and the Phase 5–7 acceptance checks) |
+| Test suite | Available (676 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, REPL rendering, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -332,6 +353,10 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | Local quota tracker (`QuotaTracker`) | Available (rolling 5h and 7d windows) |
 | Agent events (`AgentEvent`, `AgentEventType`) | Available |
 | Agent loop (`Agent`) | Available (streaming, approvals, iteration limit) |
+| CLI runtime (`build_runtime`) | Available (lazy credentials, built-in tools, backend selection) |
+| CLI commands (`chat`, `run`, `login`, `logout`, `auth status`, `config show/set`) | Available |
+| Interactive REPL (`run_repl`, slash commands, menus, quota panel) | Available |
+| Terminal themes (`Theme`, dark and light) | Available |
 | Web tool (`fetch_url`) | Available (public HTTP(S), SSRF guards, size limit) |
 | Code tool (`code_search`) | Available (regex search with context) |
 | Environment template (`.env.example`) | Available |
@@ -345,6 +370,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | Phase 5 acceptance | Passed |
 | Phase 6 acceptance | Passed |
 | Phase 7 acceptance | Passed |
+| Phase 8 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security
