@@ -351,7 +351,7 @@ mypy_path = "src"
 GEMINI_API_KEY=your-api-key-here
 
 # Optional runtime settings.
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 GEMINI_REQUEST_TIMEOUT_MS=60000
 GEMINI_RETRY_ATTEMPTS=3
 GEMINI_MAX_HISTORY_TURNS=20
@@ -469,7 +469,7 @@ Define all built-in defaults as typed constants:
 from __future__ import annotations
 
 # Model defaults
-DEFAULT_MODEL: str = "gemini-2.5-flash"
+DEFAULT_MODEL: str = "gemini-3.8-flash"
 DEFAULT_REQUEST_TIMEOUT_MS: int = 60_000
 DEFAULT_RETRY_ATTEMPTS: int = 3
 
@@ -693,7 +693,7 @@ __all__ = ["ProjectContext", "Settings", "load_project_context"]
 
 - [x] `Settings()` can be constructed with no environment variables set (all
       defaults apply).
-- [x] Setting `GEMINI_MODEL=gemini-2.5-pro` via env correctly overrides the
+- [x] Setting `GEMINI_MODEL=gemini-3.8-flash` via env correctly overrides the
       default.
 - [x] Invalid role value raises `pydantic.ValidationError`.
 - [x] `load_project_context()` returns combined instructions from found files.
@@ -914,10 +914,17 @@ MODEL_REGISTRY: dict[str, ModelInfo] = { ... }
 
 Populate the registry from the UI mockups:
 
-| Model name         | Tier  | Description                                                  |
-| ------------------ | ----- | ------------------------------------------------------------ |
-| `gemini-2.5-flash` | flash | Best for fast, simple tasks (chat, short text, basic code)   |
-| `gemini-2.5-pro`   | pro   | Best for complex reasoning, long documents, multi-step tasks |
+| Model name                  | Tier       | Description                                                     |
+| --------------------------- | ---------- | --------------------------------------------------------------- |
+| `gemini-4-argon`            | pro        | Flagship reasoning for complex engineering, science, and agents. |
+| `gemini-3.8-flash`          | flash      | Most intelligent Flash for long-horizon coding and agents.       |
+| `gemini-3.6-flash`          | flash      | Previous-generation Flash for agentic coding and everyday tasks. |
+| `gemini-3.5-flash-lite`     | flash_lite | Fast, low-cost 3.5 model for high-throughput and subagent tasks. |
+| `gemini-3.1-flash-lite`     | flash_lite | Low-latency 3.1 model for high-frequency lightweight tasks.      |
+| `gemini-3.1-pro-preview`    | pro        | Preview Pro for precise tool use and multi-step workflows.       |
+| `gemini-3-flash-preview`    | flash      | Preview Flash with strong multimodal and agentic coding skills.  |
+| `gemini-2.5-pro` (legacy)   | pro        | Limited API access; prefer Gemini 4 Argon.                       |
+| `gemini-2.5-flash` (legacy) | flash      | Limited API access; prefer Gemini 3.8 Flash.                     |
 
 Include helper functions:
 
@@ -1928,7 +1935,7 @@ Based on the UI mockups, the REPL should display:
 
 ```
 GEMINI CLI
->_  version: v0.1.0    model: gemini-2.5-flash    quota: 100k/200k tokens
+>_  version: v0.1.0    model: gemini-3.8-flash    quota: 100k/200k tokens
 ```
 
 **Conversation area:**

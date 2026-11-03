@@ -99,7 +99,7 @@ def telemetry_logs(tmp_path) -> Iterator[Any]:
 async def test_client_can_be_instantiated_with_a_dummy_key(settings: Settings) -> None:
     gemini = GeminiClient(settings, api_key="dummy-key")
 
-    assert gemini.model == "gemini-2.5-flash"
+    assert gemini.model == "gemini-3.8-flash"
     assert gemini._client is None
     assert "dummy-key" not in repr(gemini)
 
@@ -137,7 +137,7 @@ async def test_generate_maps_request_and_response(
     )
 
     call = fake_sdk.models.generate_calls[0]
-    assert call["model"] == "gemini-2.5-flash"
+    assert call["model"] == "gemini-3.8-flash"
     assert call["contents"][0].role == "user"
     assert call["contents"][0].parts[0].text == "Hi"
     assert call["config"].system_instruction == "Be helpful."
@@ -148,7 +148,7 @@ async def test_generate_maps_request_and_response(
 
     assert response.content == "Hello!"
     assert response.tool_calls == []
-    assert response.model == "gemini-2.5-flash"
+    assert response.model == "gemini-3.8-flash"
     assert response.finish_reason == "STOP"
     assert response.usage == UsageInfo(
         input_tokens=12,
@@ -235,13 +235,15 @@ async def test_generate_retries_transient_errors(
 
 
 async def test_generate_stops_after_max_attempts(
-    client: GeminiClient,
+    settings: Settings,
     fake_sdk: FakeSdkClient,
 ) -> None:
+    no_fallback = Settings(_env_file=None, model="gemini-3.1-flash-lite")
+    gemini = GeminiClient(no_fallback, api_key=TEST_KEY)
     fake_sdk.models.generate_errors = [FakeApiError(503) for _ in range(3)]
 
     with pytest.raises(LLMError) as excinfo:
-        await client.generate([Message(role="user", content="Hi")])
+        await gemini.generate([Message(role="user", content="Hi")])
 
     assert len(fake_sdk.models.generate_calls) == 3
     assert excinfo.value.status == 503
@@ -264,11 +266,11 @@ async def test_fallback_model_is_used_after_server_errors(
         "gemini-2.5-pro",
         "gemini-2.5-pro",
         "gemini-2.5-pro",
-        "gemini-2.5-flash",
+        "gemini-3.8-flash",
     ]
-    assert response.model == "gemini-2.5-flash"
+    assert response.model == "gemini-3.8-flash"
     assert response.content == "from fallback"
-    assert settings.model == "gemini-2.5-flash"
+    assert settings.model == "gemini-3.8-flash"
 
 
 async def test_client_errors_are_not_retried_or_fallbacked(
@@ -286,14 +288,16 @@ async def test_client_errors_are_not_retried_or_fallbacked(
     assert len(fake_sdk.models.generate_calls) == 1
 
 
-async def test_flash_has_no_fallback(
-    client: GeminiClient,
+async def test_model_without_fallback_does_not_switch(
+    settings: Settings,
     fake_sdk: FakeSdkClient,
 ) -> None:
+    no_fallback = Settings(_env_file=None, model="gemini-3.1-flash-lite")
+    gemini = GeminiClient(no_fallback, api_key=TEST_KEY)
     fake_sdk.models.generate_errors = [FakeApiError(503) for _ in range(3)]
 
     with pytest.raises(LLMError):
-        await client.generate([Message(role="user", content="Hi")])
+        await gemini.generate([Message(role="user", content="Hi")])
 
     assert len(fake_sdk.models.generate_calls) == 3
 
@@ -302,7 +306,11 @@ async def test_zero_retry_attempts_means_a_single_attempt(
     settings: Settings,
     fake_sdk: FakeSdkClient,
 ) -> None:
-    no_retry_settings = Settings(_env_file=None, retry_attempts=0)
+    no_retry_settings = Settings(
+        _env_file=None,
+        model="gemini-3.1-flash-lite",
+        retry_attempts=0,
+    )
     gemini = GeminiClient(no_retry_settings, api_key=TEST_KEY)
     fake_sdk.models.generate_errors = [FakeApiError(500)]
 
@@ -347,7 +355,7 @@ async def test_generate_stream_yields_text_then_done(
     ]
     assert "".join(str(event.data) for event in events[:2]) == "Hello"
     assert events[2].data.input_tokens == 9
-    assert events[3].data == "gemini-2.5-flash"
+    assert events[3].data == "gemini-3.8-flash"
 
 
 async def test_generate_stream_marks_thought_parts(
@@ -473,7 +481,7 @@ async def test_telemetry_records_metadata_without_secrets(
     records = (telemetry_logs / "telemetry.jsonl").read_text(encoding="utf-8")
     payload = json.loads(records.splitlines()[0])["event"]
 
-    assert payload["model"] == "gemini-2.5-flash"
+    assert payload["model"] == "gemini-3.8-flash"
     assert payload["status"] == "error"
     assert payload["retry_count"] == 0
     assert api_key not in records

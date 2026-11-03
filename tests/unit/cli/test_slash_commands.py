@@ -44,7 +44,7 @@ class FakeRuntime:
     def __init__(self) -> None:
         self.settings = Settings(
             _env_file=None,
-            model="gemini-2.5-flash",
+            model="gemini-3.8-flash",
             role="basic",
         )
         self.agent = FakeAgent()

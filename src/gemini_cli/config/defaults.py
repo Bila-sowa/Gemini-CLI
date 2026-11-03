@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 # Model defaults
-DEFAULT_MODEL: str = "gemini-2.5-flash"
+DEFAULT_MODEL: str = "gemini-3.8-flash"
 DEFAULT_REQUEST_TIMEOUT_MS: int = 60_000
 DEFAULT_RETRY_ATTEMPTS: int = 3
 

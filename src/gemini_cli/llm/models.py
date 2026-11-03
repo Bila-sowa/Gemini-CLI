@@ -12,6 +12,7 @@ class ModelTier(StrEnum):
     """Coarse capability class used for documentation and selection UIs."""
 
     FLASH = "flash"
+    FLASH_LITE = "flash_lite"
     PRO = "pro"
 
 
@@ -28,27 +29,112 @@ class ModelInfo:
     fallback: str | None = None
 
 
-# Registry of all known models. ``fallback`` names another registry entry that
-# is tried when the primary model fails with an unrecoverable error.
+# Registry of all known text models, newest first. ``fallback`` names another
+# registry entry that is tried when the primary model fails with an
+# unrecoverable error; the lookup follows exactly one link.
+#
+# Limits are taken from the Gemini API model pages (November 2026). The 2.5
+# entries are kept for existing configurations: Google has deprecated them and
+# routes new API traffic to the models listed first.
 MODEL_REGISTRY: dict[str, ModelInfo] = {
-    "gemini-2.5-flash": ModelInfo(
-        name="gemini-2.5-flash",
-        display_name="Gemini 2.5 Flash",
-        tier=ModelTier.FLASH,
-        context_window=1_048_576,
-        max_output_tokens=65_536,
-        description="Best for fast, simple tasks (chat, short text, basic code).",
-    ),
-    "gemini-2.5-pro": ModelInfo(
-        name="gemini-2.5-pro",
-        display_name="Gemini 2.5 Pro",
+    "gemini-4-argon": ModelInfo(
+        name="gemini-4-argon",
+        display_name="Gemini 4 Argon",
         tier=ModelTier.PRO,
         context_window=1_048_576,
         max_output_tokens=65_536,
         description=(
-            "Best for complex reasoning, long documents, and multi-step tasks."
+            "Flagship reasoning for complex software engineering, science, and "
+            "long agent runs."
         ),
-        fallback="gemini-2.5-flash",
+        fallback="gemini-3.8-flash",
+    ),
+    "gemini-3.8-flash": ModelInfo(
+        name="gemini-3.8-flash",
+        display_name="Gemini 3.8 Flash",
+        tier=ModelTier.FLASH,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=(
+            "Most intelligent Flash model for long-horizon coding and "
+            "autonomous agents."
+        ),
+        fallback="gemini-3.6-flash",
+    ),
+    "gemini-3.6-flash": ModelInfo(
+        name="gemini-3.6-flash",
+        display_name="Gemini 3.6 Flash",
+        tier=ModelTier.FLASH,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=(
+            "Previous-generation Flash for agentic coding and everyday tasks."
+        ),
+        fallback="gemini-3.5-flash-lite",
+    ),
+    "gemini-3.5-flash-lite": ModelInfo(
+        name="gemini-3.5-flash-lite",
+        display_name="Gemini 3.5 Flash-Lite",
+        tier=ModelTier.FLASH_LITE,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=(
+            "Fast, low-cost 3.5 model for high-throughput and subagent tasks."
+        ),
+        fallback="gemini-3.1-flash-lite",
+    ),
+    "gemini-3.1-flash-lite": ModelInfo(
+        name="gemini-3.1-flash-lite",
+        display_name="Gemini 3.1 Flash-Lite",
+        tier=ModelTier.FLASH_LITE,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=("Low-latency 3.1 model for high-frequency lightweight tasks."),
+    ),
+    "gemini-3.1-pro-preview": ModelInfo(
+        name="gemini-3.1-pro-preview",
+        display_name="Gemini 3.1 Pro Preview",
+        tier=ModelTier.PRO,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=(
+            "Preview Pro model for precise tool use and multi-step agentic workflows."
+        ),
+        fallback="gemini-3.8-flash",
+    ),
+    "gemini-3-flash-preview": ModelInfo(
+        name="gemini-3-flash-preview",
+        display_name="Gemini 3 Flash Preview",
+        tier=ModelTier.FLASH,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=(
+            "Preview Flash with strong multimodal understanding and agentic "
+            "coding skills."
+        ),
+        fallback="gemini-3.8-flash",
+    ),
+    "gemini-2.5-pro": ModelInfo(
+        name="gemini-2.5-pro",
+        display_name="Gemini 2.5 Pro (legacy)",
+        tier=ModelTier.PRO,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=(
+            "Legacy Pro model with limited API access; prefer Gemini 4 Argon."
+        ),
+        fallback="gemini-3.8-flash",
+    ),
+    "gemini-2.5-flash": ModelInfo(
+        name="gemini-2.5-flash",
+        display_name="Gemini 2.5 Flash (legacy)",
+        tier=ModelTier.FLASH,
+        context_window=1_048_576,
+        max_output_tokens=65_536,
+        description=(
+            "Legacy Flash model with limited API access; prefer Gemini 3.8 Flash."
+        ),
+        fallback="gemini-3.5-flash-lite",
     ),
 }
 
@@ -124,5 +210,17 @@ def get_fallback(name: str) -> ModelInfo | None:
 
 
 def list_models() -> list[ModelInfo]:
-    """Return all supported models in registry order."""
+    """Return all supported models in registry order (newest first)."""
     return list(MODEL_REGISTRY.values())
+
+
+__all__ = [
+    "MODEL_REGISTRY",
+    "ModelInfo",
+    "ModelTier",
+    "ToolDefinition",
+    "UnknownModelError",
+    "get_fallback",
+    "get_model",
+    "list_models",
+]

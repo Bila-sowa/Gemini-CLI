@@ -416,7 +416,7 @@ def test_config_show_redacts_api_key(
     assert result.exit_code == 0
     assert "api_key: set" in result.stdout
     assert "top-secret" not in result.stdout
-    assert "model: gemini-2.5-flash" in result.stdout
+    assert "model: gemini-3.8-flash" in result.stdout
 
 
 def test_config_show_reports_missing_key(

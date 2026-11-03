@@ -113,7 +113,7 @@ def model_options() -> tuple[MenuOption, ...]:
             label=model.display_name,
             description=model.description,
         )
-        for model in sorted(MODEL_REGISTRY.values(), key=lambda item: item.name)
+        for model in MODEL_REGISTRY.values()
     )
 
 

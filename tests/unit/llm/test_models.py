@@ -19,15 +19,30 @@ from gemini_cli.llm.models import (
 )
 
 
-def test_registry_contains_flash_and_pro() -> None:
-    flash = get_model("gemini-2.5-flash")
-    pro = get_model("gemini-2.5-pro")
+def test_registry_contains_current_models() -> None:
+    current = {
+        "gemini-4-argon",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview",
+    }
 
-    assert flash.tier is ModelTier.FLASH
-    assert pro.tier is ModelTier.PRO
-    assert flash.context_window > 0
-    assert flash.max_output_tokens > 0
-    assert flash.description
+    assert current <= set(MODEL_REGISTRY)
+    for name in current:
+        model = get_model(name)
+        assert model.context_window == 1_048_576
+        assert model.max_output_tokens == 65_536
+        assert model.display_name
+        assert model.description
+
+
+def test_registry_covers_every_tier() -> None:
+    assert get_model("gemini-4-argon").tier is ModelTier.PRO
+    assert get_model("gemini-3.8-flash").tier is ModelTier.FLASH
+    assert get_model("gemini-3.5-flash-lite").tier is ModelTier.FLASH_LITE
 
 
 def test_unknown_model_raises_with_available_names() -> None:
@@ -36,18 +51,30 @@ def test_unknown_model_raises_with_available_names() -> None:
 
     message = str(excinfo.value)
     assert "gemini-3.0-ultra" in message
-    assert "gemini-2.5-flash" in message
+    assert "gemini-3.8-flash" in message
 
 
 def test_pro_falls_back_to_flash() -> None:
-    fallback = get_fallback("gemini-2.5-pro")
+    fallback = get_fallback("gemini-3.1-pro-preview")
 
     assert fallback is not None
-    assert fallback.name == "gemini-2.5-flash"
+    assert fallback.name == "gemini-3.8-flash"
 
 
-def test_flash_has_no_fallback() -> None:
-    assert get_fallback("gemini-2.5-flash") is None
+def test_flagship_falls_back_to_flash() -> None:
+    fallback = get_fallback("gemini-4-argon")
+
+    assert fallback is not None
+    assert fallback.name == "gemini-3.8-flash"
+
+
+def test_lite_model_has_no_fallback() -> None:
+    assert get_fallback("gemini-3.1-flash-lite") is None
+
+
+def test_legacy_models_remain_available() -> None:
+    assert get_model("gemini-2.5-flash").fallback == "gemini-3.5-flash-lite"
+    assert get_model("gemini-2.5-pro").fallback == "gemini-3.8-flash"
 
 
 def test_unknown_model_fallback_raises() -> None:

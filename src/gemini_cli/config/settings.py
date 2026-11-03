@@ -84,7 +84,7 @@ class Settings(BaseSettings):
 
     The project-level file may not set ``api_key`` or ``allowed_roots``;
     see :data:`PROJECT_CONFIG_BLOCKED_FIELDS`. TOML files use field names,
-    for example ``model = "gemini-2.5-pro"``.
+    for example ``model = "gemini-3.8-flash"``.
     """
 
     model_config = SettingsConfigDict(

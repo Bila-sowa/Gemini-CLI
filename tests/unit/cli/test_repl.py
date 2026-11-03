@@ -65,7 +65,7 @@ class FakeRuntime:
         self,
         events: Sequence[AgentEvent] = (),
         *,
-        model: str = "gemini-2.5-flash",
+        model: str = "gemini-3.8-flash",
         role: str = "basic",
     ) -> None:
         self.settings = Settings(_env_file=None, model=model, role=role)
@@ -198,8 +198,15 @@ def test_role_and_model_options_cover_the_registry() -> None:
         "poet",
     }
     assert {option.value for option in model_options()} == {
-        "gemini-2.5-flash",
+        "gemini-4-argon",
+        "gemini-3.8-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview",
         "gemini-2.5-pro",
+        "gemini-2.5-flash",
     }
 
 
@@ -247,7 +254,7 @@ async def test_tui_shell_renders_status_and_footer() -> None:
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
         assert "version" in app.query_one(StatusBar).plain
-        assert "gemini-2.5-flash" in app.query_one(StatusBar).plain
+        assert "gemini-3.8-flash" in app.query_one(StatusBar).plain
         assert "Gemini Basic" in app.query_one(RoleBar).plain
         assert any("Can I help you today?" in line for line in app.transcript)
 

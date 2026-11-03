@@ -9,7 +9,7 @@ import pytest
 # precedence over the file for the whole session of a test.
 _DEFAULT_ENV = {
     "GEMINI_API_KEY": "",
-    "GEMINI_MODEL": "gemini-2.5-flash",
+    "GEMINI_MODEL": "gemini-3.8-flash",
     "GEMINI_REQUEST_TIMEOUT_MS": "60000",
     "GEMINI_RETRY_ATTEMPTS": "3",
     "GEMINI_MAX_OUTPUT_TOKENS": "8192",
