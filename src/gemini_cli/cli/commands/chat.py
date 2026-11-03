@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import asyncio
+import sys
 
 import typer
 
 from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.cli.runtime import build_runtime
+from gemini_cli.cli.tui.app import run_tui
 from gemini_cli.cli.tui.repl import ConsoleApprovalCallback, run_repl
 from gemini_cli.config import Settings
 
 _ERROR_COLOR = typer.colors.RED
+
+
+def _use_tui(no_tui: bool) -> bool:
+    """Use the full-screen UI only on a real interactive terminal."""
+    if no_tui:
+        return False
+    return sys.stdin.isatty() and sys.stdout.isatty()
 
 
 def chat(
@@ -25,10 +34,15 @@ def chat(
         "--role",
         help="Set the assistant role.",
     ),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="Use the plain line interface instead of the full-screen UI.",
+    ),
 ) -> None:
     """Start an interactive conversation."""
     try:
-        asyncio.run(_chat(model, role))
+        asyncio.run(_chat(model, role, no_tui))
     except KeyboardInterrupt:
         raise typer.Exit(code=130) from None
     except (AuthenticationError, CredentialStoreError) as exc:
@@ -36,7 +50,7 @@ def chat(
         raise typer.Exit(code=1) from exc
 
 
-async def _chat(model: str | None, role: str | None) -> None:
+async def _chat(model: str | None, role: str | None, no_tui: bool) -> None:
     settings = Settings()
     runtime = await build_runtime(
         settings,
@@ -45,7 +59,10 @@ async def _chat(model: str | None, role: str | None) -> None:
         approval_callback=ConsoleApprovalCallback(),
     )
     try:
-        await run_repl(runtime)
+        if _use_tui(no_tui):
+            await run_tui(runtime)
+        else:
+            await run_repl(runtime)
     finally:
         runtime.close()
 

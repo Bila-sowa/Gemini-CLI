@@ -218,6 +218,10 @@ def test_chat_wires_runtime_and_repl(monkeypatch: pytest.MonkeyPatch) -> None:
         fake_build,
     )
     monkeypatch.setattr("gemini_cli.cli.commands.chat.run_repl", fake_repl)
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.chat._use_tui",
+        lambda _no_tui: False,
+    )
 
     result = runner.invoke(
         app,
@@ -574,3 +578,93 @@ def test_run_requires_a_prompt() -> None:
     result = runner.invoke(app, ["run"])
 
     assert result.exit_code != 0
+
+
+def test_chat_uses_tui_when_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    closed: list[bool] = []
+    tui_calls: list[object] = []
+    repl_calls: list[object] = []
+
+    class FakeRuntime:
+        def close(self) -> None:
+            closed.append(True)
+
+    async def fake_build(settings: Settings, **kwargs: object) -> FakeRuntime:
+        del settings, kwargs
+        return FakeRuntime()
+
+    async def fake_tui(runtime: object) -> None:
+        tui_calls.append(runtime)
+
+    async def fake_repl(runtime: object) -> None:
+        repl_calls.append(runtime)
+
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.build_runtime", fake_build)
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.run_tui", fake_tui)
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.run_repl", fake_repl)
+    monkeypatch.setattr(
+        "gemini_cli.cli.commands.chat._use_tui",
+        lambda _no_tui: True,
+    )
+
+    result = runner.invoke(app, ["chat"])
+
+    assert result.exit_code == 0
+    assert len(tui_calls) == 1
+    assert repl_calls == []
+    assert closed == [True]
+
+
+def test_chat_no_tui_flag_forces_line_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: list[bool] = []
+
+    class FakeRuntime:
+        def close(self) -> None:
+            pass
+
+    async def fake_build(settings: Settings, **kwargs: object) -> FakeRuntime:
+        del settings, kwargs
+        return FakeRuntime()
+
+    async def fake_repl(runtime: object) -> None:
+        del runtime
+
+    def fake_use_tui(no_tui: bool) -> bool:
+        recorded.append(no_tui)
+        return False
+
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.build_runtime", fake_build)
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.run_repl", fake_repl)
+    monkeypatch.setattr("gemini_cli.cli.commands.chat._use_tui", fake_use_tui)
+
+    result = runner.invoke(app, ["chat", "--no-tui"])
+
+    assert result.exit_code == 0
+    assert recorded == [True]
+
+
+def test_use_tui_requires_both_streams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeStream:
+        def __init__(self, tty: bool) -> None:
+            self._tty = tty
+
+        def isatty(self) -> bool:
+            return self._tty
+
+    from gemini_cli.cli.commands.chat import _use_tui
+
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.sys.stdin", FakeStream(True))
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.sys.stdout", FakeStream(True))
+    assert _use_tui(False) is True
+    assert _use_tui(True) is False
+
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.sys.stdout", FakeStream(False))
+    assert _use_tui(False) is False
+
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.sys.stdout", FakeStream(True))
+    monkeypatch.setattr("gemini_cli.cli.commands.chat.sys.stdin", FakeStream(False))
+    assert _use_tui(False) is False

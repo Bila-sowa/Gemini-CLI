@@ -375,3 +375,28 @@ async def test_select_from_menu_cancels_on_none() -> None:
         repl._build_menu_application = original
 
     assert selected is None
+
+
+async def test_tui_shell_renders_status_and_footer() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.widgets import RoleBar, StatusBar
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        assert "version" in app.query_one(StatusBar).plain
+        assert "gemini-2.5-flash" in app.query_one(StatusBar).plain
+        assert "Gemini Basic" in app.query_one(RoleBar).plain
+        assert any("Can I help you today?" in line for line in app.transcript)
+
+
+async def test_tui_accepts_prompt_input() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("h", "i", "enter")
+        await pilot.pause()
+        assert "User: hi" in app.transcript
