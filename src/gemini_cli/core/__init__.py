@@ -12,14 +12,28 @@ from gemini_cli.core.quota_tracker import (
     UsageRecord,
 )
 from gemini_cli.core.session import Session
+from gemini_cli.core.streaming import (
+    AgentEvent,
+    AgentEventType,
+    done_event,
+    error_event,
+    from_stream_event,
+    tool_call_end,
+)
 
 __all__ = [
+    "AgentEvent",
+    "AgentEventType",
     "ContextManager",
     "QuotaTracker",
     "QuotaWindowStatus",
     "Session",
     "UsageRecord",
+    "done_event",
+    "error_event",
     "estimate_message_tokens",
     "estimate_messages",
     "estimate_tokens",
+    "from_stream_event",
+    "tool_call_end",
 ]

@@ -357,7 +357,7 @@ wheels = [
 
 [[package]]
 name = "gemini-cli-py"
-version = "0.24.0"
+version = "0.25.0"
 source = { editable = "." }
 dependencies = [
     { name = "google-genai" },
