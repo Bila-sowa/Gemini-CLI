@@ -252,11 +252,15 @@ sandbox or approval policies.
 The `sandbox` package is the security boundary for operations that affect the
 host system.
 
-`sandbox/base.py` defines the backend protocol. `docker_backend.py` provides
-stronger process and filesystem isolation, while `subprocess_backend.py`
-provides a local fallback constrained by timeouts and operating-system resource
-limits. `approval.py` classifies sensitive actions and coordinates explicit
-user confirmation before execution.
+`sandbox/base.py` defines the backend protocol and `ExecutionResult`.
+`subprocess_backend.py` provides a local execution boundary constrained by
+working-directory validation, a timeout, bounded output, and a minimal
+environment. It is not a kernel sandbox: commands can still reach the host
+network and files outside the allowed root. `docker_backend.py` provides
+stronger isolation through an optional ephemeral container with no network by
+default, dropped capabilities, resource limits, and a read-only project mount.
+`approval.py` classifies sensitive actions and coordinates explicit user
+confirmation before execution; the policy is fail-closed.
 
 The agent must use the sandbox abstraction rather than invoking shell commands
 directly. Denied, timed-out, or resource-limited operations should be reported

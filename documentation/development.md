@@ -174,21 +174,60 @@ uses `validate_path()` from `filesystem/path_validator.py`:
 ### Shell tool
 
 `run_command` is registered with `RiskLevel.DESTRUCTIVE` and
-`ToolCategory.SHELL`, but does not execute commands yet: the sandbox backend
-arrives with Phase 6. Until then it returns a structured failure
+`ToolCategory.SHELL`. It validates its inputs and delegates execution to a
+`SandboxBackend` injected by the caller. The tool never creates a backend and
+never approves itself: the agent runtime is responsible for checking approval
+before dispatch. Without a backend it returns a structured failure
 (`Shell execution is unavailable: no sandbox backend is configured.`) so the
 agent loop keeps running and the model receives a clear reason.
 
-The tool still validates its inputs:
+The tool validates:
 
 - `working_directory` must resolve inside `Settings.allowed_roots` and be an
   existing directory; an empty `allowed_roots` rejects any explicit directory.
 - `command` must not be blank and `timeout_seconds` must be positive.
-- The command string is never repeated in the result, metadata, or logs,
-  because it can contain secrets.
+- The configured `shell_timeout_seconds` and `shell_max_output_bytes` are used
+  when the model does not override the timeout.
 
-When the sandbox backend is added, the tool will delegate execution to it and
-return a real `ExecutionResult` instead of the unavailable failure.
+A real `ExecutionResult` is mapped to `ToolResult`: non-zero exit codes and
+timeouts become failed results, and `exit_code`, `timed_out`,
+`duration_seconds`, and truncation flags are exposed in `metadata`. The command
+string is never repeated in the result, metadata, or logs, because it can
+contain secrets.
+
+### Sandbox and approvals
+
+The `sandbox` package is the execution boundary for shell-capable tools.
+
+- `sandbox/base.py` defines `ExecutionResult`, the `SandboxBackend` protocol,
+  and `SandboxError`. A backend validates the working directory, enforces the
+  timeout, caps output, and avoids inheriting application secrets.
+- `SubprocessBackend` uses `asyncio.create_subprocess_shell`. It requires a
+  non-empty `allowed_roots` list and defaults to the first root. A timeout kills
+  the whole process group on POSIX, and both streams are drained after the
+  output limit is reached so a full pipe cannot block the child. Only a small
+  environment allowlist (`PATH`, locale, terminal, temporary directory) is
+  inherited; explicitly passed variables are merged on top. This backend is a
+  local execution boundary, not a kernel sandbox: a command can still reach the
+  network or read host files outside the root. Use Docker when stronger
+  isolation is required.
+- `DockerBackend` is optional and uses the Docker CLI, so it adds no Python
+  dependency. `is_available()` checks both the CLI and the daemon. Containers
+  run ephemerally with no network by default, dropped capabilities,
+  `no-new-privileges`, CPU/memory/PID limits, a read-only container root, and a
+  read-only project mount. `--pull=never` avoids an unexpected image download;
+  pull the configured image explicitly before first use. A timeout kills the
+  container and removes it. `select_backend()` falls back to the subprocess
+  backend when Docker is unavailable.
+- `ApprovalManager` is fail-closed. Read-only tools are auto-approved, write
+  tools ask by default, and destructive tools always ask. An unknown risk level
+  is treated as destructive. If approval is required but no callback is
+  configured, `ApprovalUnavailableError` is raised. Callback errors and invalid
+  decisions become `DENIED`. File contents are replaced by their length in the
+  confirmation details, and arguments are never written to logs.
+
+The agent runtime (Phase 7) will wire the approval check and the selected
+backend into the tool dispatch path.
 
 ### Web tool
 
@@ -238,8 +277,9 @@ Python regular expression and returns each match with its surrounding lines.
 `tests/unit/tools/test_builtin_tools.py` registers all eight built-in tools
 together and exercises the registry as the agent will: unique Gemini-compatible
 names, flat JSON Schema declarations for every tool, and the security guards
-(`/etc/passwd`, `../../etc/passwd`, `file:///`, and the unavailable shell tool)
-checked through `dispatch()`.
+(`/etc/passwd`, `../../etc/passwd`, and `file:///`) checked through
+`dispatch()`. The shell tool is also checked without a backend, where it must
+return the structured unavailable result rather than executing anything.
 
 ## Current status
 
@@ -249,7 +289,7 @@ checked through `dispatch()`.
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (446 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, and the Phase 5 acceptance suite) |
+| Test suite | Available (505 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, and the Phase 5–6 acceptance suites) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -257,7 +297,9 @@ checked through `dispatch()`.
 | Tool base contract (`BaseTool`, `ToolResult`, risk levels) | Available |
 | Tool registry (`register`, `export_schemas`, `dispatch`, telemetry) | Available |
 | Filesystem tools (`read_file`, `write_file`, `edit_file`, `find_files`, `grep`) | Available |
-| Shell tool (`run_command`) | Registered, execution unavailable until the sandbox backend |
+| Shell tool (`run_command`) | Available through an injected sandbox backend |
+| Sandbox backends (`SubprocessBackend`, optional `DockerBackend`) | Available |
+| Approval manager (`ApprovalManager`) | Available (fail-closed policy) |
 | Web tool (`fetch_url`) | Available (public HTTP(S), SSRF guards, size limit) |
 | Code tool (`code_search`) | Available (regex search with context) |
 | Environment template (`.env.example`) | Available |
@@ -269,6 +311,7 @@ checked through `dispatch()`.
 | Phase 3 acceptance | Passed |
 | Phase 4 acceptance | Passed |
 | Phase 5 acceptance | Passed |
+| Phase 6 acceptance | Passed |
 
 Placeholder modules are marked with `TODO(Phase N)` and do not implement
 behavior yet. Do not treat their presence as a functional or security
@@ -282,6 +325,10 @@ guarantee.
   `testpaths` in `pyproject.toml` still points at the `tests` directory.
 - `gemini-cli-py: command not found` — re-run `uv sync --all-extras` to
   install the console script.
+- Docker sandbox reports that it is unavailable — make sure the Docker CLI is
+  installed, the daemon is running, and the configured image is already
+  present. The backend intentionally uses `--pull=never`, so it never downloads
+  an image on its own.
 
 ## Related documentation
 
