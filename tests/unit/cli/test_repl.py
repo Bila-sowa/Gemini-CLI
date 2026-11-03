@@ -1,16 +1,53 @@
-"""Tests for the interactive REPL."""
+"""Tests for REPL rendering, menus, and streaming behavior."""
 
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Sequence
+from datetime import timedelta
 
 import pytest
 
-from gemini_cli.cli.tui.repl import ConsoleApprovalCallback, run_repl
+from gemini_cli import __version__
+from gemini_cli.cli.tui.repl import (
+    ConsoleApprovalCallback,
+    MenuOption,
+    MenuState,
+    completion_words,
+    handle_menu_key,
+    model_options,
+    render_bar,
+    render_header,
+    render_menu,
+    render_quota_panel,
+    role_options,
+    run_repl,
+    select_from_menu,
+)
 from gemini_cli.config import Settings
+from gemini_cli.core.quota_tracker import QuotaWindowStatus
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEvent, AgentEventType
 from gemini_cli.sandbox.approval import ApprovalDecision
+
+
+class FakeQuota:
+    """Deterministic quota statuses."""
+
+    def get_5h_status(self) -> QuotaWindowStatus:
+        return QuotaWindowStatus(
+            used_tokens=100_000,
+            limit_tokens=200_000,
+            percentage=50.0,
+            time_remaining=timedelta(hours=2),
+        )
+
+    def get_weekly_status(self) -> QuotaWindowStatus:
+        return QuotaWindowStatus(
+            used_tokens=310_000,
+            limit_tokens=1_000_000,
+            percentage=31.0,
+            time_remaining=timedelta(days=3),
+        )
 
 
 class FakeAgent:
@@ -33,20 +70,23 @@ class FakeAgent:
 class FakeRuntime:
     """Minimal runtime surface used by the REPL."""
 
-    def __init__(self, events: Sequence[AgentEvent]) -> None:
-        self.settings = Settings(
-            _env_file=None,
-            model="gemini-2.5-flash",
-            role="basic",
-        )
+    def __init__(
+        self,
+        events: Sequence[AgentEvent] = (),
+        *,
+        model: str = "gemini-2.5-flash",
+        role: str = "basic",
+    ) -> None:
+        self.settings = Settings(_env_file=None, model=model, role=role)
         self.agent = FakeAgent(events)
+        self.quota = FakeQuota()
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
 
-def scripted_input(
-    lines: Sequence[str],
-) -> Callable[[str], str]:
-    """Return an input function that ends with EOF."""
-
+def scripted_input(lines: Sequence[str]) -> Callable[[str], str]:
     iterator = iter(lines)
 
     def read(_prompt: str) -> str:
@@ -79,8 +119,10 @@ async def test_repl_streams_text_turn() -> None:
     await run_repl(runtime, input_func=scripted_input(["hi"]), output=write)
 
     text = "".join(parts)
+    assert "Hi" not in text
     assert "Hello" in text
     assert "GEMINI CLI" in text
+    assert "User: hi" in text
     assert len(runtime.agent.calls) == 1
     assert runtime.agent.calls[0][1] == "hi"
 
@@ -100,7 +142,7 @@ async def test_repl_prints_errors() -> None:
 
 
 async def test_repl_exits_on_exit_command() -> None:
-    runtime = FakeRuntime([])
+    runtime = FakeRuntime()
     write, _parts = collector()
 
     await run_repl(runtime, input_func=scripted_input(["exit"]), output=write)
@@ -109,22 +151,12 @@ async def test_repl_exits_on_exit_command() -> None:
 
 
 async def test_repl_exits_on_eof() -> None:
-    runtime = FakeRuntime([])
+    runtime = FakeRuntime()
     write, _parts = collector()
 
     await run_repl(runtime, input_func=scripted_input([]), output=write)
 
     assert runtime.agent.calls == []
-
-
-async def test_repl_defers_slash_commands() -> None:
-    runtime = FakeRuntime([])
-    write, parts = collector()
-
-    await run_repl(runtime, input_func=scripted_input(["/help"]), output=write)
-
-    assert runtime.agent.calls == []
-    assert "Phase 8.6" in "".join(parts)
 
 
 async def test_approval_accepts_yes() -> None:
@@ -155,8 +187,123 @@ async def test_approval_denies_on_eof() -> None:
     assert decision is ApprovalDecision.DENIED
 
 
-def test_fake_runtime_has_expected_settings() -> None:
-    runtime = FakeRuntime([])
+def test_render_header_includes_version_and_model() -> None:
+    header = render_header(FakeRuntime())
 
-    assert runtime.settings.model == "gemini-2.5-flash"
-    assert runtime.settings.role == "basic"
+    assert f"v{__version__}" in header
+    assert "gemini-2.5-flash" in header
+    assert "100k/200k tokens" in header
+
+
+def test_render_bar_bounds() -> None:
+    assert render_bar(0) == "░" * 15
+    assert render_bar(100) == "█" * 15
+    assert render_bar(-10) == "░" * 15
+    assert render_bar(150) == "█" * 15
+    assert render_bar(50).count("█") == 8
+
+
+def test_render_quota_panel_contains_percentages_and_time() -> None:
+    panel = render_quota_panel(
+        FakeQuota().get_5h_status(),
+        FakeQuota().get_weekly_status(),
+    )
+
+    assert "QUOTA" in panel
+    assert "50.0%" in panel
+    assert "2h 00m remaining" in panel
+    assert "31.0%" in panel
+
+
+def test_menu_navigation_wraps_within_bounds() -> None:
+    state = MenuState(role_options())
+
+    state, decision = handle_menu_key(state, "up")
+    assert state.index == 0
+    assert decision is None
+
+    state, _ = handle_menu_key(state, "down")
+    assert state.index == 1
+
+    state = MenuState(role_options(), index=len(role_options()) - 1)
+    state, _ = handle_menu_key(state, "down")
+    assert state.index == len(role_options()) - 1
+
+
+def test_menu_enter_selects_and_escape_cancels() -> None:
+    state = MenuState(role_options(), index=2)
+
+    _state, decision = handle_menu_key(state, "enter")
+    assert decision is not None
+    assert decision.index == 2
+
+    _state, decision = handle_menu_key(state, "escape")
+    assert decision is not None
+    assert decision.index is None
+
+
+def test_menu_ignores_unknown_keys() -> None:
+    state = MenuState(role_options())
+
+    unchanged, decision = handle_menu_key(state, "x")
+
+    assert unchanged == state
+    assert decision is None
+
+
+def test_render_menu_marks_selected_option() -> None:
+    state = MenuState(role_options(), index=1)
+
+    rendered = render_menu(state, "Roles:")
+
+    assert "Roles:" in rendered
+    assert "> Gemini Code" in rendered
+    assert "  Gemini Basic" in rendered
+
+
+def test_role_and_model_options_cover_the_registry() -> None:
+    assert {option.value for option in role_options()} == {
+        "basic",
+        "code",
+        "creator",
+        "analyser",
+        "poet",
+    }
+    assert {option.value for option in model_options()} == {
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+    }
+
+
+def test_completion_words_include_every_slash_command() -> None:
+    words = completion_words()
+
+    assert "/help" in words
+    assert "/quota" in words
+    assert words == sorted(words)
+
+
+async def test_select_from_menu_returns_none_without_options() -> None:
+    assert await select_from_menu([], "Empty") is None
+
+
+async def test_select_from_menu_uses_application() -> None:
+    options = (MenuOption("a", "A"), MenuOption("b", "B"))
+
+    class FakeApplication:
+        async def run_async(self) -> int:
+            return 1
+
+    from gemini_cli.cli.tui import repl
+
+    original = repl._build_menu_application
+    repl._build_menu_application = lambda _options, _title: (
+        FakeApplication(),
+        MenuState(options),
+    )
+    try:
+        selected = await select_from_menu(options, "Pick")
+    finally:
+        repl._build_menu_application = original
+
+    assert selected == options[1]
