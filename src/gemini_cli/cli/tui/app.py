@@ -33,6 +33,7 @@ from gemini_cli.cli.tui.widgets import (
     Logo,
     MenuScreen,
     MessageView,
+    QuotaPanel,
     RoleBar,
     StatusBar,
 )
@@ -114,6 +115,13 @@ class GeminiApp(App[None]):
     #approval-buttons Button {
         margin-left: 2;
     }
+    #quota {
+        display: none;
+        height: auto;
+        border: round #3A3F45;
+        padding: 0 1;
+        margin: 0 1;
+    }
     MenuScreen {
         align: center middle;
         background: #101214;
@@ -139,6 +147,7 @@ class GeminiApp(App[None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [
         ("ctrl+q", "quit", "Quit"),
+        ("escape", "hide_quota", "Hide quota"),
     ]
 
     def __init__(
@@ -160,6 +169,7 @@ class GeminiApp(App[None]):
         yield Logo()
         yield StatusBar()
         yield VerticalScroll(id="conversation")
+        yield QuotaPanel()
         yield Input(placeholder="Take your task", id="prompt")
         yield RoleBar()
 
@@ -259,7 +269,7 @@ class GeminiApp(App[None]):
             return
 
         if name == "/quota":
-            self._write_info("The quota panel arrives in Phase 8.14.")
+            self._toggle_quota()
             return
 
         if name == "/theme":
@@ -326,6 +336,10 @@ class GeminiApp(App[None]):
             limit_tokens=quota.limit_tokens,
         )
         self.query_one(RoleBar).update_role(self.runtime.settings.role)
+        self.query_one(QuotaPanel).update_quota(
+            self.runtime.quota.get_5h_status(),
+            self.runtime.quota.get_weekly_status(),
+        )
 
     def _new_message(self, prefix: str, prefix_style: str) -> MessageView:
         view = MessageView(prefix, prefix_style)
@@ -352,6 +366,19 @@ class GeminiApp(App[None]):
 
     def _scroll_to_end(self) -> None:
         self.query_one("#conversation", VerticalScroll).scroll_end(animate=False)
+
+    def _toggle_quota(self) -> None:
+        panel = self.query_one(QuotaPanel)
+        panel.display = not panel.display
+        if panel.display:
+            panel.update_quota(
+                self.runtime.quota.get_5h_status(),
+                self.runtime.quota.get_weekly_status(),
+            )
+            self._scroll_to_end()
+
+    def action_hide_quota(self) -> None:
+        self.query_one(QuotaPanel).display = False
 
 
 class TuiApprovalBridge:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import timedelta
 from typing import ClassVar
 
 from rich.text import Text
@@ -15,6 +16,7 @@ from textual.widgets.option_list import Option
 
 from gemini_cli import __version__
 from gemini_cli.cli.tui.repl import MenuOption
+from gemini_cli.core.quota_tracker import QuotaWindowStatus
 
 GEMINI_BLUE = "#5B9BD5"
 GEMINI_ORANGE = "#D99A3D"
@@ -173,6 +175,71 @@ class ApprovalScreen(ModalScreen[bool]):
         self.dismiss(False)
 
 
+def _bar_text(percentage: float, color: str, width: int = 15) -> Text:
+    clamped = max(0.0, min(100.0, percentage))
+    filled = round(clamped / 100 * width)
+    text = Text()
+    text.append("█" * filled, style=color)
+    text.append("░" * (width - filled), style=GEMINI_BORDER)
+    return text
+
+
+def _format_remaining(delta: timedelta) -> str:
+    seconds = max(0, int(delta.total_seconds()))
+    hours, remainder = divmod(seconds, 3600)
+    minutes = remainder // 60
+    return f"{hours}h {minutes:02d}m"
+
+
+def render_quota_text(
+    five_hour: QuotaWindowStatus,
+    weekly: QuotaWindowStatus,
+) -> Text:
+    """Render the quota panel as styled Rich text."""
+    text = Text()
+    text.append("─ QUOTA ", style=f"bold {GEMINI_MUTED}")
+    text.append("─" * 44, style=GEMINI_BORDER)
+    text.append("\n")
+    text.append("  5h limit   ", style=GEMINI_MUTED)
+    text.append_text(_bar_text(five_hour.percentage, GEMINI_RED))
+    text.append(f"  {five_hour.percentage:>5.1f}%   ", style="white")
+    text.append(
+        f"{_format_remaining(five_hour.time_remaining)} remaining",
+        style=GEMINI_MUTED,
+    )
+    text.append("\n")
+    text.append("  Weekly     ", style=GEMINI_MUTED)
+    text.append_text(_bar_text(weekly.percentage, GEMINI_GREEN))
+    text.append(f"  {weekly.percentage:>5.1f}%   ", style="white")
+    text.append(
+        f"{_format_remaining(weekly.time_remaining)} remaining",
+        style=GEMINI_MUTED,
+    )
+    return text
+
+
+class QuotaPanel(Static):
+    """Inline quota panel toggled with /quota."""
+
+    def __init__(self) -> None:
+        super().__init__(id="quota")
+        self._plain = ""
+        self.display = False
+
+    @property
+    def plain(self) -> str:
+        return self._plain
+
+    def update_quota(
+        self,
+        five_hour: QuotaWindowStatus,
+        weekly: QuotaWindowStatus,
+    ) -> None:
+        rendered = render_quota_text(five_hour, weekly)
+        self._plain = rendered.plain
+        self.update(rendered)
+
+
 class MenuScreen(ModalScreen[MenuOption | None]):
     """Modal list used for role, model, and authentication selection."""
 
@@ -229,7 +296,9 @@ __all__ = [
     "Logo",
     "MenuScreen",
     "MessageView",
+    "QuotaPanel",
     "RoleBar",
     "StatusBar",
     "compact_tokens",
+    "render_quota_text",
 ]

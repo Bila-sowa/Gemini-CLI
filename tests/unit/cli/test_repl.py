@@ -620,17 +620,49 @@ async def test_tui_clear_resets_conversation() -> None:
     assert any("Conversation cleared" in line for line in app.transcript)
 
 
-async def test_tui_quota_and_theme_are_deferred() -> None:
+def test_render_quota_text_contains_bars_and_percentages() -> None:
+    from gemini_cli.cli.tui.widgets import render_quota_text
+
+    rendered = render_quota_text(
+        FakeQuota().get_5h_status(),
+        FakeQuota().get_weekly_status(),
+    )
+
+    assert "QUOTA" in rendered.plain
+    assert "50.0%" in rendered.plain
+    assert "31.0%" in rendered.plain
+    assert "2h 00m remaining" in rendered.plain
+    assert "█" in rendered.plain
+    assert "░" in rendered.plain
+
+
+async def test_tui_quota_panel_toggles_with_slash_and_escape() -> None:
     from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.widgets import QuotaPanel
 
     app = GeminiApp(FakeRuntime())
 
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("slash", "q", "u", "o", "t", "a", "enter")
         await app.workers.wait_for_complete()
+        await pilot.pause()
+        panel = app.query_one(QuotaPanel)
+        assert panel.display is True
+        assert "QUOTA" in panel.plain
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert panel.display is False
+
+
+async def test_tui_theme_is_deferred() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("slash", "t", "h", "e", "m", "e", "enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
 
-    assert any("quota panel" in line for line in app.transcript)
     assert any("Theme switching" in line for line in app.transcript)
