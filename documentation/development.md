@@ -121,9 +121,12 @@ registry fallback (`gemini-4-argon` and `gemini-3.1-pro-preview` →
 `gemini-3.8-flash`; `gemini-3.8-flash` → `gemini-3.6-flash`).
 `GeminiClient.generate_stream()` yields `text_delta`, `tool_call_delta`,
 `usage`, `done`, or `error` events; it is not retried, and tool calls are
-emitted only after their arguments are complete. System prompts come from
-`llm/prompts/templates/`; project instructions are appended inside an
-untrusted, non-spoofable block.
+emitted only after their arguments are complete. A `ToolCallRequest` also keeps
+Gemini's opaque `thought_signature` (excluded from `repr`) and replays it
+unchanged with the matching function call; unsigned parallel sibling calls stay
+unsigned, and parallel tool observations are grouped into one user turn. System
+prompts come from `llm/prompts/templates/`; project instructions are appended
+inside an untrusted, non-spoofable block.
 
 ## Tools
 
@@ -347,7 +350,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (686 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (692 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |

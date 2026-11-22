@@ -240,6 +240,13 @@ their arguments are complete so partial JSON never reaches tool dispatch.
 `generate()` retries transient failures and then tries the registry fallback
 once; a stream is never replayed, because that would duplicate emitted text.
 
+Gemini 3 function-call parts can carry an opaque `thought_signature`.
+`ToolCallRequest` stores it outside `repr` and `_contents_from()` puts it back
+on the matching `Part` unchanged; signatures are never logged, and unsigned
+parallel sibling calls remain unsigned. Adjacent same-role contents are merged,
+so several parallel function responses travel as one `user` turn and the
+provider's required user/model alternation is preserved.
+
 ### Tool system
 
 The `tools` package provides a common interface for capabilities available to

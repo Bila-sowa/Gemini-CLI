@@ -1005,12 +1005,14 @@ class Message:
     role: Literal["user", "assistant", "tool"]
     content: str
     tool_call_id: str | None = None
+    tool_calls: tuple[ToolCallRequest, ...] = ()
 
 @dataclass
 class ToolCallRequest:
     id: str
     name: str
     arguments: dict[str, Any]
+    thought_signature: bytes | None = None  # opaque Gemini replay state
 
 @dataclass
 class ModelResponse:
@@ -1044,6 +1046,10 @@ The client is responsible for:
 7. Logging `ModelCallEvent` telemetry.
 8. Applying model fallback when the primary model returns an unrecoverable
    error and a fallback is defined.
+9. Preserving the opaque Gemini 3 `thought_signature` attached to function-call
+   parts and replaying it unchanged on the next request. Parallel function
+   responses are merged into one user turn, because the provider requires
+   alternating user and model turns.
 
 ### 6.4 Streaming Tool Call and Thought Accumulation
 
@@ -1065,6 +1071,14 @@ text, thoughts/reasoning parts, or function calls:
 3. **Usage and Finish Events:** Once the stream closes, token usage metadata
    is captured into `UsageInfo` and emitted as `StreamEvent(event_type="usage")`
    followed by `StreamEvent(event_type="done")`.
+4. **Thought Signature Retention:** Gemini 3 attaches a `thought_signature` to
+   the function-call part, usually in the first chunk. The accumulator keeps it
+   until the call is complete, stores it on `ToolCallRequest`, and the client
+   replays it unchanged on the matching function-call part. Signatures are
+   opaque provider state: they are never logged or modified. Only the parts
+   that were signed are replayed with a signature, so unsigned parallel sibling
+   calls remain unsigned. Parallel tool observations are merged into one user
+   content for the next request.
 
 ### 6.5 System prompt composition — `src/gemini_cli/llm/prompts/system.py`
 
@@ -1113,7 +1127,7 @@ Create Jinja2 templates:
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_models.py`  | `get_model` returns correct info, unknown model raises error, fallback chain resolves, `list_models` is non-empty.                                                                                                                                                                                          |
 | `test_retry.py`   | Retries on 429/500/503 up to max, no retry on 400/401, respects jitter and max delay, final exception is raised after exhaustion.                                                                                                                                                                           |
-| `test_client.py`  | SDK `generate_content` is called with correctly mapped messages and tools, response is mapped to `ModelResponse`, streaming yields expected `StreamEvent` sequence, function call chunks are properly accumulated before execution, fallback is triggered on 5xx, API key is never logged. Uses mocked SDK. |
+| `test_client.py`  | SDK `generate_content` is called with correctly mapped messages and tools, response is mapped to `ModelResponse`, streaming yields expected `StreamEvent` sequence, function call chunks are properly accumulated before execution, thought signatures are captured, retained across chunks, and replayed, parallel tool responses are grouped into one user turn, fallback is triggered on 5xx, API key is never logged. Uses mocked SDK. |
 | `test_prompts.py` | `build_system_prompt` renders the correct role template, project instructions are delimited, missing template raises clear error.                                                                                                                                                                           |
 
 ### 6.8 Acceptance criteria
@@ -1122,6 +1136,8 @@ Create Jinja2 templates:
 - [x] `generate()` with a mocked SDK returns a valid `ModelResponse`.
 - [x] `generate_stream()` with a mocked SDK yields `text_delta` then `done`.
 - [x] `generate_stream()` properly buffers multi-chunk tool calls into a valid `ToolCallRequest`.
+- [x] `thought_signature` returned with a function call is captured, retained across streamed chunks, and replayed unchanged.
+- [x] Parallel tool responses are merged into a single user turn.
 - [x] Retry logic stops after `max_attempts`.
 - [x] Fallback switches to the fallback model on supported errors.
 - [x] System prompt renders differently for each role.

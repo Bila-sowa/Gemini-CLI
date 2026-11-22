@@ -97,8 +97,15 @@ def make_call(
     call_id: str = "call_1",
     name: str = "fake_tool",
     value: str = "x",
+    *,
+    thought_signature: bytes | None = None,
 ) -> ToolCallRequest:
-    return ToolCallRequest(id=call_id, name=name, arguments={"value": value})
+    return ToolCallRequest(
+        id=call_id,
+        name=name,
+        arguments={"value": value},
+        thought_signature=thought_signature,
+    )
 
 
 async def test_text_only_turn(tmp_path: Path) -> None:
@@ -177,6 +184,23 @@ async def test_tool_call_round_trip(tmp_path: Path) -> None:
     assert harness.session.total_input_tokens == 20
     assert harness.session.total_output_tokens == 10
     assert harness.quota.get_5h_status().used_tokens == 30
+
+
+async def test_tool_signature_is_replayed_to_the_next_request(tmp_path: Path) -> None:
+    tool = FakeTool()
+    signature = b"opaque-thought-signature"
+    call = make_call(thought_signature=signature)
+    harness = build_harness(
+        tmp_path,
+        [tool_call_response([call]), text_response("All done")],
+        tools=[tool],
+    )
+
+    await collect(harness)
+
+    replayed = harness.client.calls[1]["messages"][1]
+    assert replayed.role == "assistant"
+    assert replayed.tool_calls[0].thought_signature == signature
 
 
 async def test_multiple_tool_calls_in_one_turn(tmp_path: Path) -> None:

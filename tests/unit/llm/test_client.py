@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import inspect
 import json
 import logging
@@ -41,6 +42,7 @@ from tests.fixtures.fake_gemini import (
 )
 
 TEST_KEY = "test-api-key"
+SIGNATURE = b"opaque-thought-signature"
 
 
 class FakeApiError(Exception):
@@ -219,6 +221,107 @@ async def test_generate_maps_tool_calls_in_response(
         ToolCallRequest(id="call-7", name="read_file", arguments={"path": "a.txt"}),
         ToolCallRequest(id="call_1", name="grep", arguments={"query": "needle"}),
     ]
+
+
+async def test_generate_captures_thought_signature(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    fake_sdk.models.generate_responses = [
+        make_response(
+            function_calls=[
+                make_function_call("read_file", {"path": "a.txt"}, call_id="call-7")
+            ],
+            thought_signatures=[SIGNATURE],
+        )
+    ]
+
+    response = await client.generate([Message(role="user", content="Read it")])
+
+    call = response.tool_calls[0]
+    assert call.thought_signature == SIGNATURE
+    # Opaque provider state must not leak into logs through repr().
+    assert "opaque" not in repr(call)
+
+
+async def test_generate_replays_thought_signature(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    fake_sdk.models.generate_responses = [make_response(text="done")]
+    call = ToolCallRequest(
+        id="call-1",
+        name="read_file",
+        arguments={"path": "a.txt"},
+        thought_signature=SIGNATURE,
+    )
+    messages = [
+        Message(role="user", content="Read a.txt"),
+        Message(role="assistant", content="", tool_calls=(call,)),
+        Message(
+            role="tool",
+            content="file body",
+            tool_call_id="call-1",
+            name="read_file",
+        ),
+    ]
+
+    await client.generate(messages)
+
+    contents = fake_sdk.models.generate_calls[0]["contents"]
+    part = contents[1].parts[0]
+    assert part.function_call.id == "call-1"
+    assert part.thought_signature == SIGNATURE
+
+    wire = contents[1].model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert wire["parts"][0]["thoughtSignature"] == base64.b64encode(SIGNATURE).decode()
+
+
+async def test_generate_groups_parallel_tool_responses(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    fake_sdk.models.generate_responses = [make_response(text="done")]
+    signed = ToolCallRequest(
+        id="call-1",
+        name="read_file",
+        arguments={"path": "a.txt"},
+        thought_signature=SIGNATURE,
+    )
+    unsigned = ToolCallRequest(
+        id="call-2",
+        name="grep",
+        arguments={"query": "needle"},
+    )
+    messages = [
+        Message(role="user", content="Inspect"),
+        Message(role="assistant", content="", tool_calls=(signed, unsigned)),
+        Message(
+            role="tool",
+            content="body",
+            tool_call_id="call-1",
+            name="read_file",
+        ),
+        Message(
+            role="tool",
+            content="match",
+            tool_call_id="call-2",
+            name="grep",
+        ),
+    ]
+
+    await client.generate(messages)
+
+    contents = fake_sdk.models.generate_calls[0]["contents"]
+    assert [content.role for content in contents] == ["user", "model", "user"]
+
+    calls = contents[1].parts
+    assert [part.function_call.id for part in calls] == ["call-1", "call-2"]
+    assert calls[0].thought_signature == SIGNATURE
+    assert calls[1].thought_signature is None
+
+    responses = contents[2].parts
+    assert [part.function_response.id for part in responses] == ["call-1", "call-2"]
 
 
 async def test_generate_retries_transient_errors(
@@ -411,6 +514,55 @@ async def test_generate_stream_buffers_split_tool_calls(
     )
 
 
+async def test_generate_stream_keeps_thought_signature_across_chunks(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    first = make_function_call(
+        "read_file", {"path": "a.txt"}, call_id="call-1", will_continue=True
+    )
+    second = make_function_call(
+        "read_file",
+        partial_args=[types.PartialArg(json_path="$.start_line", number_value=3.0)],
+        will_continue=False,
+    )
+    fake_sdk.models.chunks = [
+        make_function_call_chunk(first, thought_signature=SIGNATURE),
+        make_function_call_chunk(second),
+    ]
+
+    events = [
+        event
+        async for event in client.generate_stream([Message(role="user", content="Hi")])
+    ]
+
+    tool_events = [event for event in events if event.event_type == "tool_call_delta"]
+    assert len(tool_events) == 1
+    assert tool_events[0].data.thought_signature == SIGNATURE
+    assert tool_events[0].data.arguments == {"path": "a.txt", "start_line": 3.0}
+
+
+async def test_generate_stream_keeps_parallel_signatures_as_received(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    signed = make_function_call("read_file", {"path": "a.txt"}, call_id="call-1")
+    unsigned = make_function_call("grep", {"query": "needle"}, call_id="call-2")
+    fake_sdk.models.chunks = [
+        make_function_call_chunk(signed, thought_signature=SIGNATURE),
+        make_function_call_chunk(unsigned),
+    ]
+
+    events = [
+        event
+        async for event in client.generate_stream([Message(role="user", content="Hi")])
+    ]
+
+    calls = [event.data for event in events if event.event_type == "tool_call_delta"]
+    assert [call.id for call in calls] == ["call-1", "call-2"]
+    assert [call.thought_signature for call in calls] == [SIGNATURE, None]
+
+
 async def test_generate_stream_flushes_unfinished_tool_call(
     client: GeminiClient,
     fake_sdk: FakeSdkClient,
@@ -418,7 +570,9 @@ async def test_generate_stream_flushes_unfinished_tool_call(
     pending = make_function_call(
         "grep", {"query": "needle"}, call_id="call-2", will_continue=True
     )
-    fake_sdk.models.chunks = [make_function_call_chunk(pending)]
+    fake_sdk.models.chunks = [
+        make_function_call_chunk(pending, thought_signature=SIGNATURE)
+    ]
 
     events = [
         event
@@ -428,6 +582,7 @@ async def test_generate_stream_flushes_unfinished_tool_call(
     tool_events = [event for event in events if event.event_type == "tool_call_delta"]
     assert len(tool_events) == 1
     assert tool_events[0].data.arguments == {"query": "needle"}
+    assert tool_events[0].data.thought_signature == SIGNATURE
 
 
 async def test_generate_stream_reports_errors(
