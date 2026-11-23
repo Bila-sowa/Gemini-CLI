@@ -16,18 +16,25 @@ from gemini_cli.llm.models import (
     get_fallback,
     get_model,
     list_models,
+    resolve_model,
 )
 
 
 def test_registry_contains_current_models() -> None:
     current = {
         "gemini-4-argon",
+        "gemini-4-carbon",
+        "gemini-4-neon",
+        "gemini-4-hydrogen",
         "gemini-3.8-flash",
+        "gemini-3.7-flash",
         "gemini-3.6-flash",
+        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
         "gemini-3.1-pro-preview",
         "gemini-3-flash-preview",
+        "gemini-2.5-flash-lite",
     }
 
     assert current <= set(MODEL_REGISTRY)
@@ -43,6 +50,36 @@ def test_registry_covers_every_tier() -> None:
     assert get_model("gemini-4-argon").tier is ModelTier.PRO
     assert get_model("gemini-3.8-flash").tier is ModelTier.FLASH
     assert get_model("gemini-3.5-flash-lite").tier is ModelTier.FLASH_LITE
+    assert get_model("gemma-4-31b-it").tier is ModelTier.GEMMA
+
+
+def test_registry_contains_gemma_models() -> None:
+    for name in ("gemma-4-31b-it", "gemma-4-26b-a4b-it"):
+        model = get_model(name)
+        assert model.tier is ModelTier.GEMMA
+        assert model.context_window == 131_072
+        assert model.max_output_tokens == 8_192
+        assert model.fallback is None
+
+
+def test_resolve_model_returns_registered_metadata() -> None:
+    assert resolve_model("gemini-4-argon") is MODEL_REGISTRY["gemini-4-argon"]
+
+
+def test_resolve_model_accepts_custom_model() -> None:
+    model = resolve_model("my-custom-model")
+
+    assert model.name == "my-custom-model"
+    assert model.tier is ModelTier.FLASH
+    assert model.context_window == 1_048_576
+    assert model.max_output_tokens == 65_536
+    assert model.fallback is None
+
+
+@pytest.mark.parametrize("name", ["", " ", "gemini 4", "gemini\n4"])
+def test_resolve_model_rejects_invalid_names(name: str) -> None:
+    with pytest.raises(UnknownModelError):
+        resolve_model(name)
 
 
 def test_unknown_model_raises_with_available_names() -> None:
@@ -75,6 +112,7 @@ def test_lite_model_has_no_fallback() -> None:
 def test_legacy_models_remain_available() -> None:
     assert get_model("gemini-2.5-flash").fallback == "gemini-3.5-flash-lite"
     assert get_model("gemini-2.5-pro").fallback == "gemini-3.8-flash"
+    assert get_model("gemini-2.5-flash-lite").fallback == "gemini-3.5-flash-lite"
 
 
 def test_unknown_model_fallback_raises() -> None:

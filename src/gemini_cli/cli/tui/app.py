@@ -8,6 +8,8 @@ calls open a modal confirmation screen.
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import ClassVar
 
 from textual.app import App, ComposeResult
@@ -45,6 +47,7 @@ from gemini_cli.cli.tui.widgets import (
     WaitingIndicator,
 )
 from gemini_cli.cli.waiting import WAITING_SHOW_DELAY, ModelWaitTracker
+from gemini_cli.config.env_file import EnvFileError, set_env_value
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEventType
 from gemini_cli.llm import UnknownModelError
@@ -269,16 +272,20 @@ class GeminiApp(App[None]):
             selected = await self.push_screen_wait(
                 MenuScreen(role_options(), "Roles:", self._theme)
             )
-            if selected is not None:
-                await self._rebuild(role=selected.value)
+            if selected is not None and await self._rebuild(role=selected.value):
+                self._persist_env("GEMINI_ROLE", selected.value)
             return
 
         if name == "/model":
             selected = await self.push_screen_wait(
-                MenuScreen(model_options(), "Models:", self._theme)
+                MenuScreen(
+                    model_options(self.runtime.settings.model),
+                    "Models:",
+                    self._theme,
+                )
             )
-            if selected is not None:
-                await self._rebuild(model=selected.value)
+            if selected is not None and await self._rebuild(model=selected.value):
+                self._persist_env("GEMINI_MODEL", selected.value)
             return
 
         if name == "/auth":
@@ -322,7 +329,7 @@ class GeminiApp(App[None]):
         *,
         model: str | None = None,
         role: str | None = None,
-    ) -> None:
+    ) -> bool:
         try:
             replacement = await build_runtime(
                 self.runtime.settings,
@@ -337,13 +344,29 @@ class GeminiApp(App[None]):
             PromptError,
         ) as exc:
             self._write_info(f"Error: {exc}")
-            return
+            return False
 
         self.runtime.close()
         self.runtime = replacement
         self.session.model = replacement.settings.model
         self.session.role = replacement.settings.role
         self._refresh_status()
+        return True
+
+    def _persist_env(self, key: str, value: str) -> None:
+        """Save a model or role choice in the project ``.env`` file."""
+        path = Path.cwd() / ".env"
+        try:
+            set_env_value(path, key, value)
+        except (EnvFileError, OSError) as exc:
+            self._write_info(f"Could not save {key} to {path}: {exc}")
+            return
+
+        self._write_info(f"Saved {key} to {path} for future sessions.")
+        if os.environ.get(key):
+            self._write_info(
+                f"{key} is also set in the environment; that value takes precedence."
+            )
 
     async def _run_turn(self, message: str) -> None:
         prompt = self.query_one("#prompt", Input)

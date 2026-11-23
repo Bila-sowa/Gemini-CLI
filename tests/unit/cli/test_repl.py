@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +18,7 @@ from gemini_cli.cli.tui.repl import (
     run_repl,
 )
 from gemini_cli.config import Settings
+from gemini_cli.config.env_file import EnvFileError
 from gemini_cli.core.quota_tracker import QuotaWindowStatus
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEvent, AgentEventType
@@ -261,6 +263,13 @@ async def test_approval_denies_on_eof() -> None:
     assert decision is ApprovalDecision.DENIED
 
 
+def test_model_options_include_an_unregistered_current_model() -> None:
+    options = model_options("my-custom-model")
+
+    assert options[-1].value == "my-custom-model"
+    assert "current custom model" in options[-1].label
+
+
 def test_role_and_model_options_cover_the_registry() -> None:
     assert {option.value for option in role_options()} == {
         "basic",
@@ -271,14 +280,22 @@ def test_role_and_model_options_cover_the_registry() -> None:
     }
     assert {option.value for option in model_options()} == {
         "gemini-4-argon",
+        "gemini-4-carbon",
+        "gemini-4-neon",
+        "gemini-4-hydrogen",
+        "gemma-4-31b-it",
+        "gemma-4-26b-a4b-it",
         "gemini-3.8-flash",
+        "gemini-3.7-flash",
         "gemini-3.6-flash",
+        "gemini-3.5-flash",
         "gemini-3.5-flash-lite",
         "gemini-3.1-flash-lite",
         "gemini-3.1-pro-preview",
         "gemini-3-flash-preview",
         "gemini-2.5-pro",
         "gemini-2.5-flash",
+        "gemini-2.5-flash-lite",
     }
 
 
@@ -610,6 +627,113 @@ async def test_tui_role_menu_calls_rebuild(
         await pilot.pause()
 
     assert calls == [(None, "code")]
+
+
+async def test_tui_model_menu_persists_choice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    app = GeminiApp(FakeRuntime())
+    saved: list[tuple[Path, str, str]] = []
+
+    async def fake_rebuild(
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> bool:
+        del model, role
+        return True
+
+    def fake_set_env(path: Path, key: str, value: str) -> None:
+        saved.append((path, key, value))
+
+    monkeypatch.setattr(app, "_rebuild", fake_rebuild)
+    monkeypatch.setattr("gemini_cli.cli.tui.app.set_env_value", fake_set_env)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "m", "o", "d", "e", "l", "enter")
+        await pilot.pause()
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert saved == [(tmp_path / ".env", "GEMINI_MODEL", "gemini-4-argon")]
+    assert any("Saved GEMINI_MODEL" in line for line in app.transcript)
+
+
+async def test_tui_role_menu_persists_choice(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_ROLE", raising=False)
+    app = GeminiApp(FakeRuntime())
+    saved: list[tuple[Path, str, str]] = []
+
+    async def fake_rebuild(
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> bool:
+        del model, role
+        return True
+
+    def fake_set_env(path: Path, key: str, value: str) -> None:
+        saved.append((path, key, value))
+
+    monkeypatch.setattr(app, "_rebuild", fake_rebuild)
+    monkeypatch.setattr("gemini_cli.cli.tui.app.set_env_value", fake_set_env)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "r", "o", "l", "e", "enter")
+        await pilot.pause()
+        await pilot.press("down", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert saved == [(tmp_path / ".env", "GEMINI_ROLE", "code")]
+    assert any("Saved GEMINI_ROLE" in line for line in app.transcript)
+
+
+async def test_tui_model_menu_reports_env_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    app = GeminiApp(FakeRuntime())
+
+    async def fake_rebuild(
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> bool:
+        del model, role
+        return True
+
+    def failing_set_env(path: Path, key: str, value: str) -> None:
+        del path, key, value
+        raise EnvFileError("read-only file")
+
+    monkeypatch.setattr(app, "_rebuild", fake_rebuild)
+    monkeypatch.setattr("gemini_cli.cli.tui.app.set_env_value", failing_set_env)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "m", "o", "d", "e", "l", "enter")
+        await pilot.pause()
+        await pilot.press("enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("Could not save GEMINI_MODEL" in line for line in app.transcript)
 
 
 async def test_tui_clear_resets_conversation() -> None:

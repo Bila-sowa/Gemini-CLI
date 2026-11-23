@@ -18,6 +18,7 @@ from gemini_cli.llm.models import (
     get_fallback,
     get_model,
     list_models,
+    resolve_model,
 )
 from gemini_cli.llm.retry import RetryPolicy, with_retry
 
@@ -38,5 +39,6 @@ __all__ = [
     "get_fallback",
     "get_model",
     "list_models",
+    "resolve_model",
     "with_retry",
 ]

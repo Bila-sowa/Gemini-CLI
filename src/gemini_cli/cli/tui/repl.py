@@ -106,16 +106,25 @@ def role_options() -> tuple[MenuOption, ...]:
     )
 
 
-def model_options() -> tuple[MenuOption, ...]:
-    """Selection entries for every supported model."""
-    return tuple(
+def model_options(current: str | None = None) -> tuple[MenuOption, ...]:
+    """Selection entries for every registered model and the current one."""
+    options = [
         MenuOption(
             value=model.name,
             label=model.display_name,
             description=model.description,
         )
         for model in MODEL_REGISTRY.values()
-    )
+    ]
+    if current and current not in MODEL_REGISTRY:
+        options.append(
+            MenuOption(
+                value=current,
+                label=f"{current} (current custom model)",
+                description="Configured custom model.",
+            )
+        )
+    return tuple(options)
 
 
 class ConsoleApprovalCallback:

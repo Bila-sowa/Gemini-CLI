@@ -24,7 +24,7 @@ from gemini_cli.llm.models import (
     ToolDefinition,
     UnknownModelError,
     get_fallback,
-    get_model,
+    resolve_model,
 )
 from gemini_cli.llm.retry import RetryPolicy, status_code, with_retry
 from gemini_cli.telemetry import ModelCallEvent, emit_model_call
@@ -537,13 +537,13 @@ class GeminiClient:
         the registry is tried exactly once.
 
         Raises:
-            UnknownModelError: if the configured model is not registered.
+            UnknownModelError: if the configured model name is empty or malformed.
             LLMError: if every attempt fails.
         """
         contents = _contents_from(messages)
         config = self._build_config(system_instruction, tools)
         policy = self._retry_policy()
-        current = get_model(self._settings.model)
+        current = resolve_model(self._settings.model)
 
         while True:
             attempts = 0
@@ -594,6 +594,8 @@ class GeminiClient:
             return None
         if status_code(exc) not in _FALLBACK_STATUS_CODES:
             return None
+        if current.fallback is None:
+            return None
         return get_fallback(current.name)
 
     async def generate_stream(
@@ -609,9 +611,9 @@ class GeminiClient:
         it would duplicate text already shown to the user.
 
         Raises:
-            UnknownModelError: if the configured model is not registered.
+            UnknownModelError: if the configured model name is empty or malformed.
         """
-        model_name = get_model(self._settings.model).name
+        model_name = resolve_model(self._settings.model).name
         contents = _contents_from(messages)
         config = self._build_config(system_instruction, tools)
         accumulator = ToolCallAccumulator()

@@ -168,7 +168,31 @@ async def test_build_runtime_applies_model_and_role_overrides(
         runtime.close()
 
 
-async def test_build_runtime_rejects_unknown_model(
+async def test_build_runtime_accepts_custom_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "gemini_cli.cli.runtime.resolve_api_key",
+        lambda settings: ResolvedApiKey(key="test-key", source="environment"),
+    )
+    monkeypatch.setattr(
+        "gemini_cli.core.quota_tracker._default_storage_path",
+        lambda: tmp_path / "quota.json",
+    )
+
+    settings = Settings(_env_file=None, allowed_roots=[tmp_path])
+
+    runtime = await build_runtime(settings, model="gemini-does-not-exist")
+    try:
+        assert runtime.settings.model == "gemini-does-not-exist"
+        assert runtime.context.max_tokens == 1_040_384
+    finally:
+        runtime.close()
+
+
+async def test_build_runtime_rejects_invalid_model_name(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -185,7 +209,7 @@ async def test_build_runtime_rejects_unknown_model(
     settings = Settings(_env_file=None, allowed_roots=[tmp_path])
 
     with pytest.raises(UnknownModelError):
-        await build_runtime(settings, model="gemini-does-not-exist")
+        await build_runtime(settings, model="  ")
 
 
 def test_chat_wires_runtime_and_repl(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -15,7 +15,7 @@ from gemini_cli.config import Settings, load_project_context
 from gemini_cli.core.agent import Agent
 from gemini_cli.core.context_manager import ContextManager
 from gemini_cli.core.quota_tracker import QuotaTracker
-from gemini_cli.llm import GeminiClient, get_model
+from gemini_cli.llm import GeminiClient, resolve_model
 from gemini_cli.llm.prompts import build_system_prompt
 from gemini_cli.sandbox import (
     ApprovalCallback,
@@ -122,7 +122,7 @@ async def build_runtime(
         [tool.name for tool in registry.list_tools()],
     )
 
-    model_info = get_model(resolved.model)
+    model_info = resolve_model(resolved.model)
     context = ContextManager(
         max_tokens=max(1, model_info.context_window - resolved.max_output_tokens),
     )

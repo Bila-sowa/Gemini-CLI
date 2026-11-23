@@ -148,6 +148,8 @@ design goals and should not yet be interpreted as released functionality.
 - One-shot, non-interactive execution for scripts and CI workflows.
 - Textual-based terminal UI with dark/light themes and keyboard navigation.
 - Visible version, active model, role, and quota information.
+- Model and role changes made in the TUI are saved to `.env` for the next
+  session.
 - Command completion for actions such as configuration, role switching, and
   credential reset.
 - Focused assistant roles for general tasks, coding, creative work, deep
@@ -168,7 +170,10 @@ design goals and should not yet be interpreted as released functionality.
 ### Gemini integration
 
 - A dedicated client around the `google-genai` SDK.
-- Selectable Gemini models for different speed, quality, and reasoning needs.
+- A registry of current Gemini 4/3.x and Gemma 4 models for different speed,
+  quality, and reasoning needs.
+- Well-formed custom model names from `.env` are accepted with generic
+  metadata instead of stopping the application at startup.
 - Policy-controlled fallback between model tiers when appropriate.
 - Bounded exponential backoff for transient errors and rate limits.
 - Version-controlled system prompts and reusable Jinja templates.

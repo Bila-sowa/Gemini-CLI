@@ -107,9 +107,12 @@ module is reported by name.
 leave the package. Runtime behavior is driven by `Settings`:
 
 - `GEMINI_MODEL` selects a registered model. The default is
-  `gemini-3.8-flash`; the registry also lists Gemini 4 Argon, 3.6 Flash,
-  3.5/3.1 Flash-Lite, 3.1 Pro Preview, 3 Flash Preview, and the legacy 2.5
-  models. Unknown names raise `UnknownModelError`.
+  `gemini-3.8-flash`; the registry also lists Gemini 4 Argon, Carbon, Neon,
+  and Hydrogen; Gemini 3.8/3.7/3.6/3.5 Flash; 3.5/3.1 Flash-Lite; 3.1 Pro
+  Preview; 3 Flash Preview; Gemma 4 31B and 26B; and the legacy 2.5 models.
+  A well-formed name that is not in the registry is accepted as a custom model
+  with generic metadata and no fallback, so a manual `.env` entry does not
+  stop startup. Empty or malformed names still raise `UnknownModelError`.
 - `GEMINI_RETRY_ATTEMPTS` sets the total number of attempts (minimum 1) for
   transient statuses `429`, `500`, and `503`. Client errors are never retried.
 - `GEMINI_REQUEST_TIMEOUT_MS` bounds each attempt.
@@ -118,7 +121,8 @@ leave the package. Runtime behavior is driven by `Settings`:
 `GeminiClient.generate()` returns a `ModelResponse` and, after retries are
 exhausted on `404`, `429`, `500`, or `503`, retries once with the model's
 registry fallback (`gemini-4-argon` and `gemini-3.1-pro-preview` →
-`gemini-3.8-flash`; `gemini-3.8-flash` → `gemini-3.6-flash`).
+`gemini-3.8-flash`; `gemini-3.8-flash` → `gemini-3.6-flash`). Custom models
+have no fallback and report the provider error.
 `GeminiClient.generate_stream()` yields `text_delta`, `tool_call_delta`,
 `usage`, `done`, or `error` events; it is not retried, and tool calls are
 emitted only after their arguments are complete. A `ToolCallRequest` also keeps
@@ -353,7 +357,11 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
   terminal, so redirected stdout and CI logs stay clean.
 - Sensitive tool calls open a modal `ApprovalScreen` with Approve/Deny buttons.
   `/role`, `/model`, and `/auth` open a modal `MenuScreen` with arrow
-  navigation and Escape cancellation; changes rebuild the runtime.
+  navigation and Escape cancellation; changes rebuild the runtime. `/model`
+  and `/role` also update `GEMINI_MODEL` or `GEMINI_ROLE` in the project
+  `.env` atomically, preserving comments and unrelated keys. If the same key
+  is present in the process environment, `.env` is written but the environment
+  value still takes precedence and the TUI warns about it.
 - Slash commands: `/role`, `/model`, `/clear`, `/quota`, `/auth`, `/reset`,
   `/theme`, `/help`, `/exit`, `/quit`. `/quota` renders colored five-hour and
   weekly bars, and `/theme` switches the dark and light palettes at runtime.
@@ -372,11 +380,11 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (733 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, Markdown rendering, clipboard integration, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (771 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, Markdown rendering, clipboard integration, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
-| LLM client (`generate`, `generate_stream`, retry, fallback, prompts) | Available |
+| LLM client (`generate`, `generate_stream`, retry, fallback, custom models, prompts) | Available |
 | Tool base contract (`BaseTool`, `ToolResult`, risk levels) | Available |
 | Tool registry (`register`, `export_schemas`, `dispatch`, telemetry) | Available |
 | Filesystem tools (`read_file`, `write_file`, `edit_file`, `find_files`, `grep`) | Available |
@@ -392,7 +400,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI commands (`chat`, `run`, `login`, `logout`, `auth status`, `config show/set`) | Available |
 | Full-screen terminal UI (`GeminiApp`, streaming, modal approval) | Available |
 | Markdown message rendering (`GeminiMarkdown`, streaming, inline `<u>`) | Available |
-| TUI menus and slash commands (`MenuScreen`, `/role`, `/model`, `/auth`, `/theme`) | Available |
+| TUI menus and slash commands (`MenuScreen`, `/role`, `/model`, `/auth`, `/theme`) | Available (model and role choices persist to `.env`) |
 | Quota panel (`QuotaPanel`, colored 5h and weekly bars) | Available |
 | Line fallback (`run_repl`, `--no-tui`, non-TTY) | Available |
 | Terminal themes (`Theme`, dark and light) | Available |

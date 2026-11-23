@@ -117,6 +117,7 @@ gemini_cli/
 │       ├── config/
 │       │   ├── __init__.py
 │       │   ├── settings.py
+│       │   ├── env_file.py
 │       │   ├── project_context.py
 │       │   └── defaults.py
 │       └── telemetry/
@@ -180,7 +181,9 @@ The `cli` package is an adapter between users and the application core:
 
 The TUI streams agent events into the conversation, opens a modal confirmation
 for sensitive tool calls, and uses modal menus for role, model, and
-authentication selection. A non-TTY environment falls back to line mode.
+authentication selection. Model and role changes rebuild the runtime and are
+written atomically to the project `.env` file, so the next session starts with
+the same choice. A non-TTY environment falls back to line mode.
 
 User and assistant messages are parsed as Markdown after the speaker prefix,
 which stays separate so a user turn is not bold as a whole. Streaming reuses
@@ -251,8 +254,11 @@ The `llm` package isolates all Gemini-specific behavior:
 
 - `client.py` wraps the `google-genai` SDK and maps SDK request and response
   types to internal application models;
-- `models.py` defines supported models and controlled fallback behavior, such
-  as switching from a Pro model to Flash when policy allows it;
+- `models.py` defines supported Gemini and Gemma models and controlled fallback
+  behavior, such as switching from a Pro model to Flash when policy allows it.
+  `resolve_model()` accepts a well-formed but unregistered name as a custom
+  model with generic metadata and no fallback, while `get_model()` remains
+  strict for internal registry lookups;
 - `retry.py` applies bounded exponential backoff to transient failures and
   rate limits;
 - `prompts/system.py` composes trusted system instructions;
@@ -349,6 +355,8 @@ The `config` package owns typed configuration and instruction discovery:
 - `defaults.py` contains safe built-in defaults;
 - `settings.py` loads and validates settings with the precedence `environment
   variables > project configuration > global configuration > defaults`;
+- `env_file.py` updates one dotenv key atomically, preserving comments and
+  unrelated entries; the TUI uses it for `GEMINI_MODEL` and `GEMINI_ROLE`;
 - `project_context.py` discovers and reads project instructions such as
   `GEMINI.md` and `AGENTS.md`.
 

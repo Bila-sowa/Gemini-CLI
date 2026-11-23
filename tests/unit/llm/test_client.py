@@ -405,6 +405,35 @@ async def test_model_without_fallback_does_not_switch(
     assert len(fake_sdk.models.generate_calls) == 3
 
 
+async def test_generate_accepts_custom_model(
+    settings: Settings,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    custom = Settings(_env_file=None, model="my-custom-model")
+    gemini = GeminiClient(custom, api_key=TEST_KEY)
+    fake_sdk.models.generate_responses = [make_response(text="hello")]
+
+    response = await gemini.generate([Message(role="user", content="Hi")])
+
+    assert fake_sdk.models.generate_calls[0]["model"] == "my-custom-model"
+    assert response.model == "my-custom-model"
+    assert response.content == "hello"
+
+
+async def test_custom_model_has_no_fallback(
+    settings: Settings,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    custom = Settings(_env_file=None, model="my-custom-model", retry_attempts=1)
+    gemini = GeminiClient(custom, api_key=TEST_KEY)
+    fake_sdk.models.generate_errors = [FakeApiError(503)]
+
+    with pytest.raises(LLMError):
+        await gemini.generate([Message(role="user", content="Hi")])
+
+    assert len(fake_sdk.models.generate_calls) == 1
+
+
 async def test_zero_retry_attempts_means_a_single_attempt(
     settings: Settings,
     fake_sdk: FakeSdkClient,
@@ -459,6 +488,28 @@ async def test_generate_stream_yields_text_then_done(
     assert "".join(str(event.data) for event in events[:2]) == "Hello"
     assert events[2].data.input_tokens == 9
     assert events[3].data == "gemini-3.8-flash"
+
+
+async def test_generate_stream_accepts_custom_model(
+    settings: Settings,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    custom = Settings(_env_file=None, model="my-custom-model")
+    gemini = GeminiClient(custom, api_key=TEST_KEY)
+    fake_sdk.models.chunks = [make_text_chunk("hello")]
+
+    events = [
+        event
+        async for event in gemini.generate_stream([Message(role="user", content="Hi")])
+    ]
+
+    assert fake_sdk.models.stream_calls[0]["model"] == "my-custom-model"
+    assert [event.event_type for event in events] == [
+        "text_delta",
+        "usage",
+        "done",
+    ]
+    assert events[-1].data == "my-custom-model"
 
 
 async def test_generate_stream_marks_thought_parts(
