@@ -8,6 +8,7 @@ import typer
 
 from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.cli.runtime import build_runtime
+from gemini_cli.cli.waiting import ModelWaitTracker, RichWaitIndicator
 from gemini_cli.config import Settings
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEventType
@@ -60,19 +61,31 @@ async def _run(
             role=runtime.settings.role,
         )
         failed = False
+        indicator = RichWaitIndicator()
+        tracker = ModelWaitTracker()
+        indicator.set_waiting(True)
 
-        async for event in runtime.agent.run(session, prompt):
-            if event.event_type is AgentEventType.TEXT_CHUNK:
-                typer.echo(str(event.data), nl=False)
-            elif event.event_type is AgentEventType.ERROR:
-                typer.secho(
-                    f"\nError: {event.data}",
-                    fg=_ERROR_COLOR,
-                    err=True,
-                )
-                failed = True
-            elif event.event_type is AgentEventType.DONE:
-                typer.echo()
+        try:
+            async for event in runtime.agent.run(session, prompt):
+                # Clear the spinner before writing anything so streamed text is
+                # never interleaved with terminal animation.
+                indicator.set_waiting(False)
+                if event.event_type is AgentEventType.TEXT_CHUNK:
+                    typer.echo(str(event.data), nl=False)
+                elif event.event_type is AgentEventType.ERROR:
+                    typer.secho(
+                        f"\nError: {event.data}",
+                        fg=_ERROR_COLOR,
+                        err=True,
+                    )
+                    failed = True
+                elif event.event_type is AgentEventType.DONE:
+                    typer.echo()
+
+                if tracker.on_event(event.event_type):
+                    indicator.set_waiting(True)
+        finally:
+            indicator.close()
 
         return 1 if failed else 0
     finally:

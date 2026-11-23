@@ -15,6 +15,7 @@ from gemini_cli import __version__
 from gemini_cli.auth import CredentialStoreError
 from gemini_cli.auth.credentials_store import delete_api_key
 from gemini_cli.cli.runtime import CliRuntime
+from gemini_cli.cli.waiting import ModelWaitTracker, RichWaitIndicator
 from gemini_cli.config.defaults import AVAILABLE_ROLES
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEventType
@@ -183,7 +184,13 @@ async def run_repl(
             continue
 
         write(f"User: {message}\n")
-        await _run_turn(runtime, session, message, write)
+        await _run_turn(
+            runtime,
+            session,
+            message,
+            write,
+            show_indicator=output is None,
+        )
 
 
 def _handle_slash(
@@ -223,14 +230,28 @@ async def _run_turn(
     session: Session,
     message: str,
     write: Callable[[str], None],
+    *,
+    show_indicator: bool,
 ) -> None:
-    async for event in runtime.agent.run(session, message):
-        if event.event_type is AgentEventType.TEXT_CHUNK:
-            write(str(event.data))
-        elif event.event_type is AgentEventType.ERROR:
-            write(f"\nError: {event.data}\n")
-        elif event.event_type is AgentEventType.DONE:
-            write("\n")
+    indicator = RichWaitIndicator(enabled=None if show_indicator else False)
+    tracker = ModelWaitTracker()
+    indicator.set_waiting(True)
+    try:
+        async for event in runtime.agent.run(session, message):
+            # Clear the spinner before writing anything so streamed text is
+            # never interleaved with terminal animation.
+            indicator.set_waiting(False)
+            if event.event_type is AgentEventType.TEXT_CHUNK:
+                write(str(event.data))
+            elif event.event_type is AgentEventType.ERROR:
+                write(f"\nError: {event.data}\n")
+            elif event.event_type is AgentEventType.DONE:
+                write("\n")
+
+            if tracker.on_event(event.event_type):
+                indicator.set_waiting(True)
+    finally:
+        indicator.close()
 
 
 def _echo(text: str) -> None:

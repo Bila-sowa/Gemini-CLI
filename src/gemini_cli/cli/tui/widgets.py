@@ -11,12 +11,14 @@ from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
+from textual.timer import Timer
 from textual.widgets import Button, OptionList, Static
 from textual.widgets.option_list import Option
 
 from gemini_cli import __version__
 from gemini_cli.cli.tui.repl import MenuOption
 from gemini_cli.cli.tui.themes import DEFAULT_THEME, Theme
+from gemini_cli.cli.waiting import WAITING_SHOW_DELAY, WAITING_TEXT
 from gemini_cli.core.quota_tracker import QuotaWindowStatus
 
 GEMINI_BLUE = DEFAULT_THEME.accent
@@ -134,6 +136,90 @@ class MessageView(Static):
         """Append streamed text and refresh the widget."""
         self._text.append(chunk, style=style)
         self.update(self._text)
+
+
+WAITING_FRAMES: tuple[str, ...] = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
+
+
+class WaitingIndicator(Static):
+    """Animated line shown only while a model response is pending."""
+
+    def __init__(
+        self,
+        theme: Theme = DEFAULT_THEME,
+        *,
+        show_delay: float = WAITING_SHOW_DELAY,
+    ) -> None:
+        super().__init__(id="waiting")
+        self._theme = theme
+        self._show_delay = max(0.0, show_delay)
+        self._frame = 0
+        self._timer: Timer | None = None
+        self._show_timer: Timer | None = None
+        self._active = False
+        self.display = False
+
+    @property
+    def plain(self) -> str:
+        """Plain text of the current frame."""
+        frame = WAITING_FRAMES[self._frame % len(WAITING_FRAMES)]
+        return f"{frame} {WAITING_TEXT}"
+
+    def show(self) -> None:
+        """Start waiting; the first frame appears after a short delay."""
+        if self._active:
+            return
+        self._active = True
+        if self._show_delay <= 0:
+            self._reveal()
+            return
+        self._show_timer = self.set_timer(self._show_delay, self._reveal)
+
+    def hide(self) -> None:
+        """Stop waiting and remove the line from the layout."""
+        self._active = False
+        if self._show_timer is not None:
+            self._show_timer.stop()
+            self._show_timer = None
+        if self._timer is not None:
+            self._timer.pause()
+        self.display = False
+
+    def _reveal(self) -> None:
+        self._show_timer = None
+        if not self._active:
+            return
+        self._frame = 0
+        # Render before becoming visible: Static has no visual until its first
+        # update, and Textual may paint the widget as soon as display flips.
+        self._render_frame()
+        self.display = True
+        if self._timer is None:
+            self._timer = self.set_interval(0.1, self._advance)
+        else:
+            self._timer.resume()
+        self.scroll_visible(animate=False)
+
+    def _advance(self) -> None:
+        self._frame += 1
+        self._render_frame()
+
+    def _render_frame(self) -> None:
+        text = Text("  ")
+        text.append(
+            WAITING_FRAMES[self._frame % len(WAITING_FRAMES)],
+            style=self._theme.assistant_color,
+        )
+        text.append(f" {WAITING_TEXT}", style=self._theme.muted)
+        self.update(text, layout=False)
+
+    def on_unmount(self) -> None:
+        if self._show_timer is not None:
+            self._show_timer.stop()
+            self._show_timer = None
+        if self._timer is not None:
+            self._timer.stop()
+            self._timer = None
 
 
 def _bar_text(percentage: float, color: str, width: int = 15) -> Text:
@@ -319,6 +405,7 @@ __all__ = [
     "QuotaPanel",
     "RoleBar",
     "StatusBar",
+    "WaitingIndicator",
     "compact_tokens",
     "render_quota_text",
 ]

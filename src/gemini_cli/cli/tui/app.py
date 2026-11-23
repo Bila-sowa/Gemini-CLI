@@ -36,7 +36,9 @@ from gemini_cli.cli.tui.widgets import (
     QuotaPanel,
     RoleBar,
     StatusBar,
+    WaitingIndicator,
 )
+from gemini_cli.cli.waiting import WAITING_SHOW_DELAY, ModelWaitTracker
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEventType
 from gemini_cli.llm import UnknownModelError
@@ -68,6 +70,10 @@ class GeminiApp(App[None]):
         padding: 0;
         background: #1E2023;
         scrollbar-size: 1 1;
+    }
+    #waiting {
+        height: 1;
+        margin: 0 1;
     }
     .message {
         width: 100%;
@@ -166,11 +172,13 @@ class GeminiApp(App[None]):
         *,
         bridge: TuiApprovalBridge | None = None,
         theme: Theme = DEFAULT_THEME,
+        waiting_delay: float = WAITING_SHOW_DELAY,
     ) -> None:
         super().__init__()
         self.runtime = runtime
         self._bridge = bridge
         self._theme = theme
+        self._waiting_delay = waiting_delay
         self.transcript: list[str] = []
         self.session = Session(
             model=runtime.settings.model,
@@ -331,20 +339,34 @@ class GeminiApp(App[None]):
     async def _run_turn(self, message: str) -> None:
         prompt = self.query_one("#prompt", Input)
         prompt.disabled = True
+        conversation = self.query_one("#conversation", VerticalScroll)
         view = self._new_message("✦: ", self._theme.assistant_color)
+        indicator = WaitingIndicator(self._theme, show_delay=self._waiting_delay)
+        tracker = ModelWaitTracker()
         try:
+            await conversation.mount(indicator)
+            indicator.show()
             async for event in self.runtime.agent.run(self.session, message):
+                # Clear the spinner before rendering anything so streamed text
+                # is never interleaved with terminal animation.
+                indicator.hide()
                 if event.event_type is AgentEventType.TEXT_CHUNK:
                     view.append(str(event.data))
                     self._scroll_to_end()
                 elif event.event_type is AgentEventType.THINKING:
-                    continue
+                    pass
                 elif event.event_type is AgentEventType.ERROR:
                     view.append(f"\nError: {event.data}", style=GEMINI_RED)
                     self._scroll_to_end()
                 elif event.event_type is AgentEventType.DONE:
                     break
+
+                if tracker.on_event(event.event_type):
+                    indicator.show()
         finally:
+            indicator.hide()
+            if indicator.is_mounted:
+                await indicator.remove()
             prompt.disabled = False
             prompt.focus()
             self._refresh_status()

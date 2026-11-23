@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
 from datetime import timedelta
 
 import pytest
 
+from gemini_cli.cli.tui import repl as repl_module
 from gemini_cli.cli.tui.repl import (
     ConsoleApprovalCallback,
     MenuOption,
@@ -56,6 +58,39 @@ class FakeAgent:
         self.calls.append((session, user_message))
         for event in self.events:
             yield event
+
+
+class GatedAgent:
+    """Yield scripted events, pausing on ``asyncio.Event`` gates."""
+
+    def __init__(self, steps: Sequence[AgentEvent | asyncio.Event]) -> None:
+        self.steps = list(steps)
+
+    async def run(
+        self,
+        session: Session,
+        user_message: str,
+    ) -> AsyncIterator[AgentEvent]:
+        del session, user_message
+        for step in self.steps:
+            if isinstance(step, asyncio.Event):
+                await step.wait()
+            else:
+                yield step
+
+
+class FakeIndicator:
+    """Record indicator changes without drawing anything."""
+
+    def __init__(self, **_kwargs: object) -> None:
+        self.states: list[bool] = []
+        self.closed = False
+
+    def set_waiting(self, waiting: bool) -> None:
+        self.states.append(waiting)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class FakeRuntime:
@@ -118,6 +153,43 @@ async def test_repl_streams_text_turn() -> None:
     assert "User: hi" in text
     assert len(runtime.agent.calls) == 1
     assert runtime.agent.calls[0][1] == "hi"
+
+
+async def test_repl_turn_toggles_the_indicator_around_model_waits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = FakeRuntime(
+        [
+            AgentEvent(AgentEventType.TOOL_CALL_START),
+            AgentEvent(AgentEventType.TOOL_CALL_END),
+            AgentEvent(AgentEventType.TEXT_CHUNK, "Done"),
+            AgentEvent(AgentEventType.DONE),
+        ]
+    )
+    indicator = FakeIndicator()
+    monkeypatch.setattr(
+        repl_module,
+        "RichWaitIndicator",
+        lambda **_kwargs: indicator,
+    )
+    writes: list[tuple[str, list[bool]]] = []
+
+    def write(text: str) -> None:
+        writes.append((text, list(indicator.states)))
+
+    await repl_module._run_turn(
+        runtime,
+        Session(),
+        "go",
+        write,
+        show_indicator=False,
+    )
+
+    assert indicator.states == [True, False, False, True, False, False]
+    assert indicator.closed is True
+    assert "Done" in "".join(text for text, _states in writes)
+    done_states = next(states for text, states in writes if text == "Done")
+    assert done_states[-1] is False
 
 
 async def test_repl_prints_errors() -> None:
@@ -290,6 +362,73 @@ async def test_tui_streams_agent_turn() -> None:
 
     assert "User: hi" in app.transcript
     assert any(line == "✦: Hello" for line in app.transcript)
+
+
+async def test_tui_waiting_indicator_tracks_only_model_requests() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.widgets import WaitingIndicator
+
+    initial = asyncio.Event()
+    tool_running = asyncio.Event()
+    next_model = asyncio.Event()
+    runtime = FakeRuntime()
+    runtime.agent = GatedAgent(  # type: ignore[assignment]
+        [
+            initial,
+            AgentEvent(AgentEventType.TEXT_CHUNK, "Hi"),
+            AgentEvent(AgentEventType.TOOL_CALL_START),
+            tool_running,
+            AgentEvent(AgentEventType.TOOL_CALL_END),
+            next_model,
+            AgentEvent(AgentEventType.TEXT_CHUNK, "!"),
+            AgentEvent(AgentEventType.DONE),
+        ]
+    )
+    app = GeminiApp(runtime, waiting_delay=0)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("h", "i", "enter")
+        await pilot.pause(0.1)
+
+        indicator = app.query_one(WaitingIndicator)
+        assert indicator.display is True
+
+        initial.set()
+        await pilot.pause(0.1)
+        indicator = app.query_one(WaitingIndicator)
+        assert indicator.display is False
+
+        tool_running.set()
+        await pilot.pause(0.1)
+        indicator = app.query_one(WaitingIndicator)
+        assert indicator.display is True
+
+        next_model.set()
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert list(app.query(WaitingIndicator)) == []
+    assert any(line == "✦: Hi!" for line in app.transcript)
+
+
+async def test_tui_waiting_indicator_animates_frames() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.widgets import WaitingIndicator
+
+    app = GeminiApp(FakeRuntime(), waiting_delay=0)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        indicator = WaitingIndicator(show_delay=0)
+        await app.query_one("#conversation").mount(indicator)
+        indicator.show()
+        await pilot.pause()
+
+        first = indicator.plain
+        await pilot.pause(0.25)
+
+        assert indicator.plain != first
+
+        indicator.hide()
 
 
 async def test_tui_renders_agent_error() -> None:

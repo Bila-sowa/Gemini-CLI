@@ -153,6 +153,8 @@ The `cli` package is an adapter between users and the application core:
 - `runtime.py` builds the agent runtime lazily — it resolves the API key,
   loads project context, registers the built-in tools, selects the sandbox
   backend, and assembles the agent;
+- `waiting.py` derives the model-wait state from agent events and provides the
+  Rich spinner used by `run` and the line fallback;
 - `commands/chat.py` starts an interactive conversation;
 - `commands/run.py` performs a single non-interactive request and is suitable
   for scripts and CI jobs;
@@ -169,6 +171,13 @@ The `cli` package is an adapter between users and the application core:
 The TUI streams agent events into the conversation, opens a modal confirmation
 for sensitive tool calls, and uses modal menus for role, model, and
 authentication selection. A non-TTY environment falls back to line mode.
+
+`run`, the line fallback, and the TUI all show an animated waiting indicator
+while the agent is awaiting a model response. The indicator is driven by the
+agent's event stream: it disappears as soon as a response chunk arrives, and it
+is suppressed while a tool call is in flight, so it never overlaps streamed text
+or tool execution. The CLI variants write to `stderr` and stay disabled when
+that stream is not a terminal.
 
 Commands that do not need the agent — help, version, auth, and config — never
 resolve credentials. The one-shot `run` command uses no approval callback, so

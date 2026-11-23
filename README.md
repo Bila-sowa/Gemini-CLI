@@ -141,6 +141,7 @@ design goals and should not yet be interpreted as released functionality.
 ### Terminal experience
 
 - Full-screen terminal UI with streaming model responses.
+- Animated waiting indicator while a model response is pending.
 - One-shot, non-interactive execution for scripts and CI workflows.
 - Textual-based terminal UI with dark/light themes and keyboard navigation.
 - Visible version, active model, role, and quota information.

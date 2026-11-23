@@ -10,11 +10,26 @@ from typer.testing import CliRunner
 
 from gemini_cli.auth import AuthenticationError
 from gemini_cli.cli.app import app
+from gemini_cli.cli.commands import run as run_module
 from gemini_cli.config import Settings
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEvent, AgentEventType
 
 runner = CliRunner()
+
+
+class FakeIndicator:
+    """Record waiting-state changes without touching a terminal."""
+
+    def __init__(self) -> None:
+        self.states: list[bool] = []
+        self.closed = False
+
+    def set_waiting(self, waiting: bool) -> None:
+        self.states.append(waiting)
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class FakeAgent:
@@ -32,6 +47,19 @@ class FakeAgent:
         self.calls.append((session, user_message))
         for event in self.events:
             yield event
+
+
+class RaisingAgent:
+    """Raise before yielding to exercise the cleanup path."""
+
+    async def run(
+        self,
+        session: Session,
+        user_message: str,
+    ) -> AsyncIterator[AgentEvent]:
+        del session, user_message
+        raise RuntimeError("boom")
+        yield  # pragma: no cover - keeps this an async generator
 
 
 class FakeRuntime:
@@ -124,6 +152,53 @@ def test_run_ignores_tool_events(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert result.exit_code == 0
     assert "Done" in result.stdout
+
+
+def test_run_toggles_the_wait_indicator_around_model_calls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = FakeRuntime(
+        [
+            AgentEvent(AgentEventType.TOOL_CALL_START),
+            AgentEvent(AgentEventType.TOOL_CALL_END),
+            AgentEvent(AgentEventType.TEXT_CHUNK, "Done"),
+            AgentEvent(AgentEventType.DONE),
+        ]
+    )
+    install_runtime(monkeypatch, runtime)
+    indicator = FakeIndicator()
+    monkeypatch.setattr(
+        run_module,
+        "RichWaitIndicator",
+        lambda: indicator,
+    )
+
+    result = runner.invoke(app, ["run", "use a tool"])
+
+    assert result.exit_code == 0
+    assert "Done" in result.stdout
+    assert indicator.states == [True, False, False, True, False, False]
+    assert indicator.closed is True
+
+
+async def test_run_closes_the_wait_indicator_when_the_agent_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = FakeRuntime([])
+    runtime.agent = RaisingAgent()  # type: ignore[assignment]
+    install_runtime(monkeypatch, runtime)
+    indicator = FakeIndicator()
+    monkeypatch.setattr(
+        run_module,
+        "RichWaitIndicator",
+        lambda: indicator,
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await run_module._run("hi", None, None)
+
+    assert indicator.closed is True
+    assert runtime.closed is True
 
 
 def test_run_reports_agent_error(monkeypatch: pytest.MonkeyPatch) -> None:

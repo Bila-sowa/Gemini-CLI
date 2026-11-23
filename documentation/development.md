@@ -327,7 +327,12 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 - `chat` starts the full-screen **Textual** application in `tui/app.py`:
   the ASCII wordmark, bordered status bar, scrollable conversation, bordered
   input, and role footer match the mockups. Assistant text streams into the
-  conversation and errors are red.
+  conversation and errors are red. While a model request is pending, an inline
+  `WaitingIndicator` animates; it is hidden before each text chunk and while
+  tools run.
+- `run` and the line fallback show a Rich spinner on `stderr` while the model
+  request is in flight. The spinner is disabled when `stderr` is not a
+  terminal, so redirected stdout and CI logs stay clean.
 - Sensitive tool calls open a modal `ApprovalScreen` with Approve/Deny buttons.
   `/role`, `/model`, and `/auth` open a modal `MenuScreen` with arrow
   navigation and Escape cancellation; changes rebuild the runtime.
@@ -350,7 +355,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (692 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (710 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
