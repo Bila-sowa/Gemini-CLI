@@ -69,8 +69,12 @@ gemini_cli/
 │       │   │   └── config.py
 │       │   └── tui/
 │       │       ├── __init__.py
+│       │       ├── app.py
+│       │       ├── clipboard.py
+│       │       ├── markdown.py
 │       │       ├── repl.py
-│       │       └── themes.py
+│       │       ├── themes.py
+│       │       └── widgets.py
 │       ├── core/
 │       │   ├── __init__.py
 │       │   ├── agent.py
@@ -163,14 +167,29 @@ The `cli` package is an adapter between users and the application core:
 - `commands/mcp.py` will manage configured MCP servers in Phase 9;
 - `tui/app.py` is the full-screen Textual application: ASCII wordmark, status
   bar, scrollable conversation, prompt, quota panel, and role footer;
+- `tui/markdown.py` renders user and assistant messages with the Textual GFM
+  parser, sanitizes control sequences, adds inline `<u>`, and keeps links
+  non-clickable;
+- `tui/clipboard.py` copies code blocks through native desktop helpers and
+  saves a private fallback file when neither a helper nor OSC 52 is available;
 - `tui/widgets.py` contains the logo, status bar, message view, quota panel,
   approval modal, and selection menu;
 - `tui/repl.py` is the plain line fallback for pipes, CI, and `--no-tui`;
-- `tui/themes.py` keeps the dark and light palettes separate from behavior.
+- `tui/themes.py` keeps the dark and light palettes separate from behavior and
+  derives the Textual themes used by Markdown blocks.
 
 The TUI streams agent events into the conversation, opens a modal confirmation
 for sensitive tool calls, and uses modal menus for role, model, and
 authentication selection. A non-TTY environment falls back to line mode.
+
+User and assistant messages are parsed as Markdown after the speaker prefix,
+which stays separate so a user turn is not bold as a whole. Streaming reuses
+`Markdown.get_stream()` and a final `update()` ensures a partially received
+fence or emphasis run is rendered correctly. Inline `<u>` is supported through
+a small block mixin on top of the upstream GFM parser; raw HTML is not
+executed, and links are styled but never opened automatically. Fenced code
+blocks carry a `copy` button in their toolbar that copies the block contents
+to the terminal clipboard.
 
 `run`, the line fallback, and the TUI all show an animated waiting indicator
 while the agent is awaiting a model response. The indicator is driven by the

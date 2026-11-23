@@ -330,6 +330,24 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
   conversation and errors are red. While a model request is pending, an inline
   `WaitingIndicator` animates; it is hidden before each text chunk and while
   tools run.
+- User and assistant messages are rendered as Markdown by `tui/markdown.py`.
+  The speaker prefix is a separate widget, so a user turn is not bold as a
+  whole. Assistant chunks go through `Markdown.get_stream()` and a final
+  `update()` renders the completed document; user input is rendered once.
+  Headings, emphasis, strikethrough, inline `<u>`, lists, block quotes, tables,
+  inline code, and fenced code blocks are supported. Each code block has a
+  `copy` button that copies the whole block to the clipboard. The button uses
+  `wl-copy` on Wayland, `xclip`/`xsel` on X11, or the platform equivalent, and
+  falls back to OSC 52 only when the terminal supports it. VTE terminals (GNOME
+  Terminal, Tilix, Terminator) ignore OSC 52; without `wl-clipboard` the code
+  is saved to `~/.gemini-cli/clipboard/last-code-block.txt` and a warning is
+  shown instead of a false success message. The toolbar stays fixed above the
+  code area, which scrolls internally after 20 rows. Terminal control and ANSI
+  sequences are stripped, raw HTML is not executed, and links are styled but
+  never opened automatically.
+- `tui/themes.py` defines the dark and light palettes shared by the widgets and
+  derives the matching Textual themes (`gemini-dark`, `gemini-light`) for
+  Markdown headings and links. H2 headings are bold without underline.
 - `run` and the line fallback show a Rich spinner on `stderr` while the model
   request is in flight. The spinner is disabled when `stderr` is not a
   terminal, so redirected stdout and CI logs stay clean.
@@ -342,7 +360,6 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 - `tui/repl.py` is the plain line fallback used by `--no-tui`, pipes, and CI.
   It streams text and supports `/help`, `/clear`, `/reset`, and exit; commands
   that need a menu point the user to the full-screen UI.
-- `tui/themes.py` defines the dark and light palettes shared by the widgets.
 - `login` verifies the key against the API unless `--no-verify` is passed.
   `config set` validates through `Settings`, refuses `api_key` and
   `allowed_roots`, and writes to the project config or `--global`.
@@ -355,7 +372,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (710 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (733 tests: smoke, import, entry-point, configuration, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, Markdown rendering, clipboard integration, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -374,6 +391,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI runtime (`build_runtime`) | Available (lazy credentials, built-in tools, backend selection) |
 | CLI commands (`chat`, `run`, `login`, `logout`, `auth status`, `config show/set`) | Available |
 | Full-screen terminal UI (`GeminiApp`, streaming, modal approval) | Available |
+| Markdown message rendering (`GeminiMarkdown`, streaming, inline `<u>`) | Available |
 | TUI menus and slash commands (`MenuScreen`, `/role`, `/model`, `/auth`, `/theme`) | Available |
 | Quota panel (`QuotaPanel`, colored 5h and weekly bars) | Available |
 | Line fallback (`run_repl`, `--no-tui`, non-TTY) | Available |

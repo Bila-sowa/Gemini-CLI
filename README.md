@@ -141,6 +141,9 @@ design goals and should not yet be interpreted as released functionality.
 ### Terminal experience
 
 - Full-screen terminal UI with streaming model responses.
+- Markdown rendering for user and assistant messages: headings, emphasis,
+  underline, lists, block quotes, tables, inline code, and fenced code blocks
+  with a copy button.
 - Animated waiting indicator while a model response is pending.
 - One-shot, non-interactive execution for scripts and CI workflows.
 - Textual-based terminal UI with dark/light themes and keyboard navigation.

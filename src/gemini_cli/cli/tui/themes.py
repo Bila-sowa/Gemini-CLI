@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from textual.theme import Theme as TextualTheme
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -68,6 +70,56 @@ THEMES: dict[str, Theme] = {
 }
 
 
+def to_textual_theme(theme: Theme) -> TextualTheme:
+    """Build the Textual theme used by the application.
+
+    The terminal UI keeps its own palette for widgets that need explicit
+    colors. Textual uses this derived theme for Markdown headings, links, and
+    the built-in widgets that consume theme variables.
+    """
+    return TextualTheme(
+        name=f"gemini-{theme.name}",
+        primary=theme.accent,
+        secondary=theme.assistant_color,
+        warning=theme.warning,
+        error=theme.error_color,
+        success=theme.success,
+        accent=theme.accent,
+        foreground=theme.foreground,
+        background=theme.background,
+        surface=theme.surface,
+        panel=theme.surface,
+        dark=theme.name == "dark",
+        variables={
+            "markdown-h1-color": theme.accent,
+            "markdown-h1-background": "transparent",
+            "markdown-h1-text-style": "bold",
+            "markdown-h2-color": theme.accent,
+            "markdown-h2-background": "transparent",
+            # H2 is intentionally not underlined.
+            "markdown-h2-text-style": "bold",
+            "markdown-h3-color": theme.accent,
+            "markdown-h3-background": "transparent",
+            "markdown-h3-text-style": "bold",
+            "markdown-h4-color": theme.foreground,
+            "markdown-h4-background": "transparent",
+            "markdown-h4-text-style": "bold",
+            "markdown-h5-color": theme.muted,
+            "markdown-h5-background": "transparent",
+            "markdown-h5-text-style": "bold",
+            "markdown-h6-color": theme.muted,
+            "markdown-h6-background": "transparent",
+            "markdown-h6-text-style": "bold",
+            "link-color": theme.accent,
+            "link-color-hover": theme.accent,
+            "link-background": "transparent",
+            "link-background-hover": theme.surface,
+            "link-style": "underline",
+            "link-style-hover": "bold underline",
+        },
+    )
+
+
 class UnknownThemeError(ValueError):
     """Raised when a theme name is not registered."""
 
@@ -96,4 +148,5 @@ __all__ = [
     "Theme",
     "UnknownThemeError",
     "get_theme",
+    "to_textual_theme",
 ]

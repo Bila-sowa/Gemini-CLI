@@ -18,6 +18,7 @@ from textual.widgets import Input
 from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.auth.credentials_store import delete_api_key
 from gemini_cli.cli.runtime import CliRuntime, build_runtime
+from gemini_cli.cli.tui.markdown import MarkdownMessageView
 from gemini_cli.cli.tui.repl import (
     AUTH_OPTIONS,
     model_options,
@@ -25,10 +26,15 @@ from gemini_cli.cli.tui.repl import (
     render_help,
     role_options,
 )
-from gemini_cli.cli.tui.themes import DEFAULT_THEME, LIGHT_THEME, Theme
+from gemini_cli.cli.tui.themes import (
+    DEFAULT_THEME,
+    LIGHT_THEME,
+    THEMES,
+    Theme,
+    to_textual_theme,
+)
 from gemini_cli.cli.tui.widgets import (
     GEMINI_MUTED,
-    GEMINI_RED,
     ApprovalScreen,
     Logo,
     MenuScreen,
@@ -194,6 +200,8 @@ class GeminiApp(App[None]):
         yield RoleBar()
 
     def on_mount(self) -> None:
+        for theme in THEMES.values():
+            self.register_theme(to_textual_theme(theme))
         self._apply_theme()
         self._refresh_status()
         self._write_assistant("Can I help you today?")
@@ -303,6 +311,7 @@ class GeminiApp(App[None]):
         if name == "/theme":
             self._theme = LIGHT_THEME if self._theme.name == "dark" else DEFAULT_THEME
             self._apply_theme()
+            await self._rerender_markdown()
             self._write_info(f"Theme: {self._theme.name}")
             return
 
@@ -340,7 +349,11 @@ class GeminiApp(App[None]):
         prompt = self.query_one("#prompt", Input)
         prompt.disabled = True
         conversation = self.query_one("#conversation", VerticalScroll)
-        view = self._new_message("✦: ", self._theme.assistant_color)
+        view = self._new_markdown_message(
+            "✦: ",
+            self._theme.assistant_color,
+            streaming=True,
+        )
         indicator = WaitingIndicator(self._theme, show_delay=self._waiting_delay)
         tracker = ModelWaitTracker()
         try:
@@ -351,12 +364,12 @@ class GeminiApp(App[None]):
                 # is never interleaved with terminal animation.
                 indicator.hide()
                 if event.event_type is AgentEventType.TEXT_CHUNK:
-                    view.append(str(event.data))
+                    await view.append(str(event.data))
                     self._scroll_to_end()
                 elif event.event_type is AgentEventType.THINKING:
                     pass
                 elif event.event_type is AgentEventType.ERROR:
-                    view.append(f"\nError: {event.data}", style=GEMINI_RED)
+                    view.add_error(str(event.data))
                     self._scroll_to_end()
                 elif event.event_type is AgentEventType.DONE:
                     break
@@ -364,6 +377,7 @@ class GeminiApp(App[None]):
                 if tracker.on_event(event.event_type):
                     indicator.show()
         finally:
+            await view.finish()
             indicator.hide()
             if indicator.is_mounted:
                 await indicator.remove()
@@ -373,7 +387,7 @@ class GeminiApp(App[None]):
             self.transcript.append(view.plain)
 
     def _apply_theme(self) -> None:
-        self.theme = "textual-dark" if self._theme.name == "dark" else "textual-light"
+        self.theme = f"gemini-{self._theme.name}"
         screen = self.screen
         screen.set_class(self._theme.name == "light", "light")
         screen.set_class(self._theme.name == "dark", "dark")
@@ -403,16 +417,40 @@ class GeminiApp(App[None]):
         self.query_one("#conversation", VerticalScroll).mount(view)
         return view
 
+    def _new_markdown_message(
+        self,
+        prefix: str,
+        prefix_style: str,
+        *,
+        initial: str = "",
+        streaming: bool = False,
+    ) -> MarkdownMessageView:
+        view = MarkdownMessageView(
+            prefix,
+            prefix_style,
+            initial=initial,
+            error_style=self._theme.error_color,
+            streaming=streaming,
+        )
+        self.query_one("#conversation", VerticalScroll).mount(view)
+        return view
+
     def _write_user(self, message: str) -> None:
-        self.transcript.append(f"User: {message}")
-        view = self._new_message("User: ", "bold white")
-        view.append(message)
+        view = self._new_markdown_message(
+            "User: ",
+            f"bold {self._theme.user_color}",
+            initial=message,
+        )
+        self.transcript.append(view.plain)
         self._scroll_to_end()
 
     def _write_assistant(self, message: str) -> None:
-        self.transcript.append(f"✦: {message}")
-        view = self._new_message("✦: ", self._theme.assistant_color)
-        view.append(message)
+        view = self._new_markdown_message(
+            "✦: ",
+            self._theme.assistant_color,
+            initial=message,
+        )
+        self.transcript.append(view.plain)
         self._scroll_to_end()
 
     def _write_info(self, message: str) -> None:
@@ -423,6 +461,11 @@ class GeminiApp(App[None]):
 
     def _scroll_to_end(self) -> None:
         self.query_one("#conversation", VerticalScroll).scroll_end(animate=False)
+
+    async def _rerender_markdown(self) -> None:
+        """Re-render conversation Markdown so it follows the new theme."""
+        for view in self.query(MarkdownMessageView):
+            await view.rerender()
 
     def _toggle_quota(self) -> None:
         panel = self.query_one(QuotaPanel)
