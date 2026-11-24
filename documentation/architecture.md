@@ -181,8 +181,9 @@ The `cli` package is an adapter between users and the application core:
 - `tui/markdown.py` renders user and assistant messages with the Textual GFM
   parser, sanitizes control sequences, adds inline `<u>`, and keeps links
   non-clickable;
-- `tui/clipboard.py` copies code blocks through native desktop helpers and
-  saves a private fallback file when neither a helper nor OSC 52 is available;
+- `tui/clipboard.py` copies code blocks and finished mouse selections through
+  native desktop helpers and saves a private fallback file when neither a
+  helper nor OSC 52 is available;
 - `tui/widgets.py` contains the logo, status bar, message view, quota panel,
   approval modal, and selection menu;
 - `tui/repl.py` is the plain line fallback for pipes, CI, and `--no-tui`;
@@ -206,7 +207,9 @@ fence or emphasis run is rendered correctly. Inline `<u>` is supported through
 a small block mixin on top of the upstream GFM parser; raw HTML is not
 executed, and links are styled but never opened automatically. Fenced code
 blocks carry a `copy` button in their toolbar that copies the block contents
-to the terminal clipboard.
+to the terminal clipboard. Releasing a mouse selection anywhere in the TUI
+also copies the selected text automatically and confirms it with a short
+notification, using the same helper-first clipboard chain.
 
 `run`, the line fallback, and the TUI all show an animated waiting indicator
 while the agent is awaiting a model response. The indicator is driven by the

@@ -17,21 +17,27 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from gemini_cli.config.defaults import GLOBAL_CONFIG_DIR_NAME
+
+if TYPE_CHECKING:
+    from textual.app import App
 
 logger = logging.getLogger(__name__)
 
 COPY_TIMEOUT_SECONDS = 3.0
 FALLBACK_FILE_NAME = "last-code-block.txt"
+SELECTION_FALLBACK_FILE_NAME = "last-selection.txt"
 
 
 @dataclass(frozen=True)
 class ClipboardResult:
-    """Outcome of a native clipboard attempt."""
+    """Outcome of a clipboard attempt."""
 
     ok: bool
     method: str = ""
+    fallback_path: Path | None = None
 
 
 def _on_wayland() -> bool:
@@ -103,10 +109,59 @@ async def copy_to_system_clipboard(text: str) -> ClipboardResult:
     return ClipboardResult(ok=False)
 
 
-def save_clipboard_fallback(text: str) -> Path | None:
+async def copy_with_feedback(
+    app: App[Any],
+    text: str,
+    *,
+    label: str = "Text",
+    fallback_file_name: str = FALLBACK_FILE_NAME,
+) -> ClipboardResult:
+    """Copy *text* and report the outcome with an app notification.
+
+    Native helpers are tried first because VTE terminals drop OSC 52. When the
+    terminal supports OSC 52 the copy is sent through it, and otherwise the
+    text is saved to a private fallback file instead of claiming a copy that
+    never reached the desktop clipboard.
+    """
+    result = await copy_to_system_clipboard(text)
+    if result.ok:
+        app.notify(f"{label} copied ({result.method}).", timeout=2)
+        return result
+
+    app.copy_to_clipboard(text)
+    if not terminal_ignores_osc52():
+        app.notify(f"{label} sent through the terminal clipboard.", timeout=2)
+        return ClipboardResult(ok=True, method="OSC 52")
+
+    message = (
+        "System clipboard unavailable. Install wl-clipboard (Wayland) "
+        "or xclip/xsel (X11)."
+    )
+    fallback = save_clipboard_fallback(text, file_name=fallback_file_name)
+    if fallback is None:
+        app.notify(
+            f"{message} Could not save the text to a fallback file.",
+            severity="warning",
+            timeout=8,
+        )
+        return ClipboardResult(ok=False, method="file")
+
+    app.notify(
+        f"{message} {label} saved to {fallback}.",
+        severity="warning",
+        timeout=8,
+    )
+    return ClipboardResult(ok=True, method="file", fallback_path=fallback)
+
+
+def save_clipboard_fallback(
+    text: str,
+    *,
+    file_name: str = FALLBACK_FILE_NAME,
+) -> Path | None:
     """Save *text* to a private file when the system clipboard is unavailable."""
     directory = Path.home() / GLOBAL_CONFIG_DIR_NAME / "clipboard"
-    path = directory / FALLBACK_FILE_NAME
+    path = directory / file_name
     temporary: Path | None = None
     try:
         directory.mkdir(parents=True, exist_ok=True)
@@ -130,9 +185,12 @@ def save_clipboard_fallback(text: str) -> Path | None:
 
 
 __all__ = [
+    "FALLBACK_FILE_NAME",
+    "SELECTION_FALLBACK_FILE_NAME",
     "ClipboardResult",
     "clipboard_commands",
     "copy_to_system_clipboard",
+    "copy_with_feedback",
     "save_clipboard_fallback",
     "terminal_ignores_osc52",
 ]

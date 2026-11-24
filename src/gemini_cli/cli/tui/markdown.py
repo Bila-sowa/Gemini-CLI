@@ -27,11 +27,7 @@ from textual.style import Style
 from textual.widgets import Button, Label, Markdown, Static
 from textual.widgets.markdown import MarkdownBlock, MarkdownFence, MarkdownStream
 
-from gemini_cli.cli.tui.clipboard import (
-    copy_to_system_clipboard,
-    save_clipboard_fallback,
-    terminal_ignores_osc52,
-)
+from gemini_cli.cli.tui.clipboard import copy_with_feedback
 from gemini_cli.cli.tui.themes import Theme
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)?)")
@@ -179,24 +175,7 @@ class CopyableMarkdownFence(MarkdownFence):
         await self._copy_code()
 
     async def _copy_code(self) -> None:
-        result = await copy_to_system_clipboard(self.code)
-        if result.ok:
-            self.app.notify(f"Code block copied ({result.method}).", timeout=2)
-            return
-
-        self.app.copy_to_clipboard(self.code)
-        if not terminal_ignores_osc52():
-            self.app.notify("Code sent through the terminal clipboard.", timeout=2)
-            return
-
-        message = (
-            "System clipboard unavailable. Install wl-clipboard (Wayland) "
-            "or xclip/xsel (X11)."
-        )
-        fallback = save_clipboard_fallback(self.code)
-        if fallback is not None:
-            message = f"{message} Code saved to {fallback}."
-        self.app.notify(message, severity="warning", timeout=8)
+        await copy_with_feedback(self.app, self.code, label="Code block")
 
 
 class GeminiMarkdown(Markdown):

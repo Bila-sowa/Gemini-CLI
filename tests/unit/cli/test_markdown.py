@@ -139,13 +139,19 @@ async def test_code_block_copy_button_copies_the_whole_block(monkeypatch) -> Non
     from gemini_cli.cli.tui.clipboard import ClipboardResult
     from gemini_cli.cli.tui.markdown import CopyableMarkdownFence
 
-    copied: list[str] = []
+    copied: list[tuple[str, str]] = []
 
-    async def fake_copy(text: str) -> ClipboardResult:
-        copied.append(text)
+    async def fake_copy(
+        _app: object,
+        text: str,
+        *,
+        label: str = "Text",
+        fallback_file_name: str = "last-code-block.txt",
+    ) -> ClipboardResult:
+        copied.append((text, label))
         return ClipboardResult(ok=True, method="test-clipboard")
 
-    monkeypatch.setattr(markdown_module, "copy_to_system_clipboard", fake_copy)
+    monkeypatch.setattr(markdown_module, "copy_with_feedback", fake_copy)
     app = MarkdownApp("```python\nprint(1)\nprint(2)\n```")
 
     async with app.run_test(size=(80, 24)) as pilot:
@@ -160,7 +166,7 @@ async def test_code_block_copy_button_copies_the_whole_block(monkeypatch) -> Non
         await pilot.click(".fence-copy")
         await pilot.pause()
 
-    assert copied == ["print(1)\nprint(2)"]
+    assert copied == [("print(1)\nprint(2)", "Code block")]
 
 
 async def test_markdown_spacing_keeps_quotes_centered_and_lists_compact() -> None:

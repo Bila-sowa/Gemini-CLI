@@ -144,6 +144,8 @@ design goals and should not yet be interpreted as released functionality.
 - Markdown rendering for user and assistant messages: headings, emphasis,
   underline, lists, block quotes, tables, inline code, and fenced code blocks
   with a copy button.
+- Selecting text with the mouse copies it automatically and confirms the copy
+  with a short notification.
 - Animated waiting indicator while a model response is pending.
 - One-shot, non-interactive execution for scripts and CI workflows.
 - Textual-based terminal UI with dark/light themes and keyboard navigation.

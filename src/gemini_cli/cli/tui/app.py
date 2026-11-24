@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 from typing import ClassVar, Literal
 
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
 from textual.containers import VerticalScroll
@@ -36,6 +37,10 @@ from gemini_cli.cli.slash_commands import (
     render_help,
     resolve_command,
     resolve_command_name,
+)
+from gemini_cli.cli.tui.clipboard import (
+    SELECTION_FALLBACK_FILE_NAME,
+    copy_with_feedback,
 )
 from gemini_cli.cli.tui.markdown import MarkdownMessageView
 from gemini_cli.cli.tui.repl import (
@@ -232,6 +237,27 @@ class GeminiApp(App[None]):
             self._run_turn(message),
             group="agent",
             exclusive=True,
+        )
+
+    def on_text_selected(self, event: events.TextSelected) -> None:
+        """Copy a finished mouse selection and confirm it with a toast.
+
+        Textual posts ``TextSelected`` on mouse release, including for a plain
+        click that cleared the previous selection, so empty selections are
+        ignored. Copying runs in a worker because a native helper can take up
+        to its timeout and must not stall the message pump.
+        """
+        text = self.screen.get_selected_text()
+        if not text or not text.strip():
+            return
+        self.run_worker(
+            copy_with_feedback(
+                self,
+                text,
+                label="Selection",
+                fallback_file_name=SELECTION_FALLBACK_FILE_NAME,
+            ),
+            group="clipboard",
         )
 
     async def request_approval(

@@ -340,15 +340,19 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
   `update()` renders the completed document; user input is rendered once.
   Headings, emphasis, strikethrough, inline `<u>`, lists, block quotes, tables,
   inline code, and fenced code blocks are supported. Each code block has a
-  `copy` button that copies the whole block to the clipboard. The button uses
-  `wl-copy` on Wayland, `xclip`/`xsel` on X11, or the platform equivalent, and
-  falls back to OSC 52 only when the terminal supports it. VTE terminals (GNOME
-  Terminal, Tilix, Terminator) ignore OSC 52; without `wl-clipboard` the code
-  is saved to `~/.gemini-cli/clipboard/last-code-block.txt` and a warning is
-  shown instead of a false success message. The toolbar stays fixed above the
-  code area, which scrolls internally after 20 rows. Terminal control and ANSI
-  sequences are stripped, raw HTML is not executed, and links are styled but
-  never opened automatically.
+  `copy` button that copies the whole block to the clipboard. Releasing a mouse
+  selection anywhere in the TUI copies the selected text automatically and
+  confirms it with a short notification; plain clicks and empty selections are
+  ignored. Both paths use `wl-copy` on Wayland, `xclip`/`xsel` on X11, or the
+  platform equivalent, and fall back to OSC 52 only when the terminal supports
+  it. VTE terminals (GNOME Terminal, Tilix, Terminator) ignore OSC 52; without
+  `wl-clipboard` the code is saved to
+  `~/.gemini-cli/clipboard/last-code-block.txt` and a selection is saved to
+  `~/.gemini-cli/clipboard/last-selection.txt`, with a warning instead of a
+  false success message. The toolbar stays fixed above the code area, which
+  scrolls internally after 20 rows. Terminal control and ANSI sequences are
+  stripped, raw HTML is not executed, and links are styled but never opened
+  automatically.
 - `tui/themes.py` defines the dark and light palettes shared by the widgets and
   derives the matching Textual themes (`gemini-dark`, `gemini-light`) for
   Markdown headings and links. H2 headings are bold without underline. Theme
@@ -404,7 +408,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (874 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, slash-command registry, aliases, arguments and suggestions, Textual TUI, theme selection, persistence, and message restyling, Markdown rendering, clipboard integration, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (883 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, slash-command registry, aliases, arguments and suggestions, Textual TUI, theme selection, persistence, and message restyling, Markdown rendering, clipboard integration, selection auto-copy, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |

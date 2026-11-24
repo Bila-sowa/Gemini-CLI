@@ -3,11 +3,42 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from textual.containers import VerticalScroll
 
 from gemini_cli.cli.tui import clipboard
 from gemini_cli.cli.tui.markdown import CopyableMarkdownFence, MarkdownMessageView
+
+
+class FakeClipboardHost:
+    """Minimal app surface used by ``copy_with_feedback``."""
+
+    def __init__(self) -> None:
+        self.notifications: list[dict[str, Any]] = []
+        self.copied: list[str] = []
+
+    def notify(
+        self,
+        message: str,
+        *,
+        title: str = "",
+        severity: str = "information",
+        timeout: float | None = None,
+        markup: bool = True,
+    ) -> None:
+        self.notifications.append(
+            {
+                "message": message,
+                "title": title,
+                "severity": severity,
+                "timeout": timeout,
+                "markup": markup,
+            }
+        )
+
+    def copy_to_clipboard(self, text: str) -> None:
+        self.copied.append(text)
 
 
 def test_wayland_prefers_wl_copy(monkeypatch) -> None:
@@ -95,26 +126,135 @@ def test_fallback_file_is_private(monkeypatch, tmp_path: Path) -> None:
     assert path.parent.stat().st_mode & 0o777 == 0o700
 
 
-async def test_copy_falls_back_to_a_private_file_when_clipboard_is_unavailable(
+async def test_copy_with_feedback_prefers_a_native_helper(monkeypatch) -> None:
+    async def native_copy(_text: str) -> clipboard.ClipboardResult:
+        return clipboard.ClipboardResult(ok=True, method="wl-copy")
+
+    monkeypatch.setattr(clipboard, "copy_to_system_clipboard", native_copy)
+    host = FakeClipboardHost()
+
+    result = await clipboard.copy_with_feedback(host, "hello", label="Selection")
+
+    assert result.ok is True
+    assert host.copied == []
+    assert host.notifications == [
+        {
+            "message": "Selection copied (wl-copy).",
+            "title": "",
+            "severity": "information",
+            "timeout": 2,
+            "markup": True,
+        }
+    ]
+
+
+async def test_copy_with_feedback_uses_osc52_when_no_helper_exists(
+    monkeypatch,
+) -> None:
+    async def no_clipboard(_text: str) -> clipboard.ClipboardResult:
+        return clipboard.ClipboardResult(ok=False)
+
+    monkeypatch.setattr(clipboard, "copy_to_system_clipboard", no_clipboard)
+    monkeypatch.setattr(clipboard, "terminal_ignores_osc52", lambda: False)
+    host = FakeClipboardHost()
+
+    result = await clipboard.copy_with_feedback(host, "hello", label="Selection")
+
+    assert result.ok is True
+    assert host.copied == ["hello"]
+    assert host.notifications[0]["message"] == (
+        "Selection sent through the terminal clipboard."
+    )
+
+
+async def test_copy_with_feedback_saves_a_selection_file_on_vte(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
+    async def no_clipboard(_text: str) -> clipboard.ClipboardResult:
+        return clipboard.ClipboardResult(ok=False)
+
+    saved: list[tuple[str, str]] = []
+    fallback_path = tmp_path / "last-selection.txt"
+
+    def fake_save(text: str, *, file_name: str = "") -> Path:
+        saved.append((text, file_name))
+        return fallback_path
+
+    monkeypatch.setattr(clipboard, "copy_to_system_clipboard", no_clipboard)
+    monkeypatch.setattr(clipboard, "terminal_ignores_osc52", lambda: True)
+    monkeypatch.setattr(clipboard, "save_clipboard_fallback", fake_save)
+    host = FakeClipboardHost()
+
+    result = await clipboard.copy_with_feedback(
+        host,
+        "hello",
+        label="Selection",
+        fallback_file_name=clipboard.SELECTION_FALLBACK_FILE_NAME,
+    )
+
+    assert saved == [("hello", "last-selection.txt")]
+    assert result.ok is True
+    assert result.fallback_path == fallback_path
+    notification = host.notifications[0]
+    assert notification["severity"] == "warning"
+    assert notification["timeout"] == 8
+    assert str(fallback_path) in str(notification["message"])
+
+
+async def test_copy_with_feedback_reports_a_failed_fallback(monkeypatch) -> None:
+    async def no_clipboard(_text: str) -> clipboard.ClipboardResult:
+        return clipboard.ClipboardResult(ok=False)
+
+    monkeypatch.setattr(clipboard, "copy_to_system_clipboard", no_clipboard)
+    monkeypatch.setattr(clipboard, "terminal_ignores_osc52", lambda: True)
+    monkeypatch.setattr(clipboard, "save_clipboard_fallback", lambda *_, **__: None)
+    host = FakeClipboardHost()
+
+    result = await clipboard.copy_with_feedback(host, "hello", label="Selection")
+
+    assert result.ok is False
+    notification = host.notifications[0]
+    assert notification["severity"] == "warning"
+    assert "Could not save the text" in str(notification["message"])
+
+
+def test_fallback_file_accepts_a_custom_name(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        clipboard.Path,
+        "home",
+        classmethod(lambda _cls: tmp_path),
+    )
+
+    path = clipboard.save_clipboard_fallback(
+        "selected text",
+        file_name=clipboard.SELECTION_FALLBACK_FILE_NAME,
+    )
+
+    assert path == tmp_path / ".gemini-cli" / "clipboard" / "last-selection.txt"
+    assert path is not None
+    assert path.read_text(encoding="utf-8") == "selected text"
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+async def test_code_block_copy_uses_the_shared_helper(monkeypatch) -> None:
     from gemini_cli.cli.tui import markdown as markdown_module
     from gemini_cli.cli.tui.clipboard import ClipboardResult
     from tests.unit.cli.test_markdown import MarkdownApp
 
-    saved: list[str] = []
+    calls: list[tuple[str, str]] = []
 
-    async def no_clipboard(_text: str) -> ClipboardResult:
-        return ClipboardResult(ok=False)
+    async def fake_copy(
+        _app: object,
+        text: str,
+        *,
+        label: str = "Text",
+        fallback_file_name: str = clipboard.FALLBACK_FILE_NAME,
+    ) -> ClipboardResult:
+        calls.append((text, label))
+        return ClipboardResult(ok=True, method="fake")
 
-    def fake_save(text: str) -> Path:
-        saved.append(text)
-        return tmp_path / "last-code-block.txt"
-
-    monkeypatch.setattr(markdown_module, "copy_to_system_clipboard", no_clipboard)
-    monkeypatch.setattr(markdown_module, "terminal_ignores_osc52", lambda: True)
-    monkeypatch.setattr(markdown_module, "save_clipboard_fallback", fake_save)
+    monkeypatch.setattr(markdown_module, "copy_with_feedback", fake_copy)
 
     app = MarkdownApp("```text\nsecret\n```")
     async with app.run_test(size=(80, 24)) as pilot:
@@ -122,7 +262,7 @@ async def test_copy_falls_back_to_a_private_file_when_clipboard_is_unavailable(
         await pilot.click(".fence-copy")
         await pilot.pause()
 
-    assert saved == ["secret"]
+    assert calls == [("secret", "Code block")]
 
 
 async def test_code_toolbar_stays_visible_while_code_scrolls() -> None:
