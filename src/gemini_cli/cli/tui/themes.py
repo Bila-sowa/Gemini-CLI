@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 from textual.theme import Theme as TextualTheme
 
+from gemini_cli.config.defaults import DEFAULT_THEME_NAME
+
 
 @dataclass(frozen=True)
 class Theme:
@@ -29,7 +31,7 @@ class Theme:
 
 
 DEFAULT_THEME = Theme(
-    name="dark",
+    name=DEFAULT_THEME_NAME,
     assistant_color="#5B9BD5",
     user_color="#E6E6E6",
     error_color="#E06C75",

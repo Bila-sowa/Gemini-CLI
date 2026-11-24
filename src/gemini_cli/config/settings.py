@@ -16,6 +16,7 @@ from pydantic_settings import (
 
 from gemini_cli.config.defaults import (
     AVAILABLE_ROLES,
+    AVAILABLE_THEMES,
     DEFAULT_MAX_AGENT_ITERATIONS,
     DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_HISTORY_TURNS,
@@ -30,6 +31,7 @@ from gemini_cli.config.defaults import (
     DEFAULT_SHELL_MAX_OUTPUT_BYTES,
     DEFAULT_SHELL_TIMEOUT_SECONDS,
     DEFAULT_TELEMETRY_ENABLED,
+    DEFAULT_THEME_NAME,
     GLOBAL_CONFIG_DIR_NAME,
     GLOBAL_CONFIG_FILE_NAME,
     PROJECT_CONFIG_FILE_NAME,
@@ -126,6 +128,9 @@ class Settings(BaseSettings):
     # --- Role ---
     role: str = Field(default=DEFAULT_ROLE)
 
+    # --- Terminal theme ---
+    theme: str = Field(default=DEFAULT_THEME_NAME)
+
     # --- Telemetry ---
     telemetry_enabled: bool = Field(default=DEFAULT_TELEMETRY_ENABLED)
 
@@ -137,6 +142,19 @@ class Settings(BaseSettings):
         if normalized not in AVAILABLE_ROLES:
             msg = (
                 f"Unknown role '{normalized}'. Available: {', '.join(AVAILABLE_ROLES)}"
+            )
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("theme")
+    @classmethod
+    def validate_theme(cls, value: str) -> str:
+        """Normalize the theme name and reject unknown values."""
+        normalized = value.strip().lower()
+        if normalized not in AVAILABLE_THEMES:
+            msg = (
+                f"Unknown theme '{normalized}'. "
+                f"Available: {', '.join(AVAILABLE_THEMES)}"
             )
             raise ValueError(msg)
         return normalized

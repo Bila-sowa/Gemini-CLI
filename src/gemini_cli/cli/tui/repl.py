@@ -27,7 +27,7 @@ from gemini_cli.cli.slash_commands import (
     resolve_command,
 )
 from gemini_cli.cli.waiting import ModelWaitTracker, RichWaitIndicator
-from gemini_cli.config.defaults import AVAILABLE_ROLES
+from gemini_cli.config.defaults import AVAILABLE_ROLES, AVAILABLE_THEMES
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEventType
 from gemini_cli.llm import MODEL_REGISTRY
@@ -43,6 +43,11 @@ ROLE_DESCRIPTIONS: dict[str, str] = {
     "creator": "Built for ideas, concepts, and creative direction.",
     "analyser": "Built for deep analysis and clear insights.",
     "poet": "For poetry, prose, and expressive writing.",
+}
+
+THEME_DESCRIPTIONS: dict[str, str] = {
+    "dark": "Dark palette for low-light terminals.",
+    "light": "Light palette for bright environments.",
 }
 
 
@@ -78,6 +83,18 @@ def role_options() -> tuple[MenuOption, ...]:
             description=ROLE_DESCRIPTIONS.get(role, ""),
         )
         for role in AVAILABLE_ROLES
+    )
+
+
+def theme_options() -> tuple[MenuOption, ...]:
+    """Selection entries for every available terminal theme."""
+    return tuple(
+        MenuOption(
+            value=theme,
+            label=theme.capitalize(),
+            description=THEME_DESCRIPTIONS.get(theme, ""),
+        )
+        for theme in AVAILABLE_THEMES
     )
 
 
@@ -267,4 +284,5 @@ __all__ = [
     "render_help",
     "role_options",
     "run_repl",
+    "theme_options",
 ]

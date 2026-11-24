@@ -10,6 +10,7 @@ from gemini_cli.cli.tui.markdown import (
     MarkdownMessageView,
     sanitize_markdown,
 )
+from gemini_cli.cli.tui.themes import LIGHT_THEME
 
 
 class MarkdownApp(App[None]):
@@ -45,6 +46,18 @@ def test_sanitize_markdown_removes_terminal_sequences() -> None:
 
 def test_sanitize_markdown_normalizes_carriage_returns() -> None:
     assert sanitize_markdown("a\rb\r\nc") == "a\nb\nc"
+
+
+def test_markdown_message_view_applies_theme_to_prefix_and_errors() -> None:
+    user_view = MarkdownMessageView("User: ", "bold #E6E6E6", role="user")
+    assistant_view = MarkdownMessageView("✦: ", "#5B9BD5")
+
+    user_view.apply_theme(LIGHT_THEME)
+    assistant_view.apply_theme(LIGHT_THEME)
+
+    assert user_view._prefix_style == f"bold {LIGHT_THEME.user_color}"
+    assert assistant_view._prefix_style == LIGHT_THEME.assistant_color
+    assert user_view._error_style == LIGHT_THEME.error_color
 
 
 async def test_markdown_message_renders_supported_blocks_and_inline_styles() -> None:

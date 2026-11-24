@@ -16,7 +16,7 @@ tests exercise every supported inline construct.
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from rich.text import Text
 from textual.app import ComposeResult
@@ -32,6 +32,7 @@ from gemini_cli.cli.tui.clipboard import (
     save_clipboard_fallback,
     terminal_ignores_osc52,
 )
+from gemini_cli.cli.tui.themes import Theme
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\)?)")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]")
@@ -326,11 +327,13 @@ class MarkdownMessageView(Vertical):
         initial: str = "",
         error_style: str = "",
         streaming: bool = False,
+        role: Literal["user", "assistant"] = "assistant",
     ) -> None:
         super().__init__(classes="message markdown-message")
         self._prefix = prefix
         self._prefix_style = prefix_style
         self._error_style = error_style
+        self._role = role
         self._source: list[str] = []
         self._errors: list[str] = []
         self._markdown: GeminiMarkdown | None = None
@@ -416,6 +419,23 @@ class MarkdownMessageView(Vertical):
     def add_error(self, message: str) -> None:
         """Attach an error that must bypass Markdown parsing."""
         self._errors.append(message)
+        self._refresh_error()
+
+    def apply_theme(self, theme: Theme) -> None:
+        """Update the speaker prefix and error colors for a new theme."""
+        if self._role == "user":
+            self._prefix_style = f"bold {theme.user_color}"
+        else:
+            self._prefix_style = theme.assistant_color
+        self._error_style = theme.error_color
+
+        try:
+            prefix = self.query_one(".message-prefix", Static)
+        except NoMatches:
+            pass
+        else:
+            prefix.update(Text(self._prefix, style=self._prefix_style))
+
         self._refresh_error()
 
     async def rerender(self) -> None:

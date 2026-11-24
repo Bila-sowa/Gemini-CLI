@@ -16,6 +16,7 @@ from gemini_cli.cli.tui.repl import (
     model_options,
     role_options,
     run_repl,
+    theme_options,
 )
 from gemini_cli.config import Settings
 from gemini_cli.config.env_file import EnvFileError
@@ -268,6 +269,13 @@ def test_model_options_include_an_unregistered_current_model() -> None:
 
     assert options[-1].value == "my-custom-model"
     assert "current custom model" in options[-1].label
+
+
+def test_theme_options_cover_available_themes() -> None:
+    options = theme_options()
+
+    assert {option.value for option in options} == {"dark", "light"}
+    assert all(option.description for option in options)
 
 
 def test_role_and_model_options_cover_the_registry() -> None:
@@ -875,6 +883,19 @@ def test_render_quota_text_contains_bars_and_percentages() -> None:
     assert "░" in rendered.plain
 
 
+def test_render_quota_text_uses_theme_for_empty_bar() -> None:
+    from gemini_cli.cli.tui.themes import LIGHT_THEME
+    from gemini_cli.cli.tui.widgets import render_quota_text
+
+    rendered = render_quota_text(
+        FakeQuota().get_5h_status(),
+        FakeQuota().get_weekly_status(),
+        LIGHT_THEME,
+    )
+
+    assert LIGHT_THEME.border in {str(span.style) for span in rendered.spans}
+
+
 async def test_tui_quota_panel_toggles_with_slash_and_escape() -> None:
     from gemini_cli.cli.tui.app import GeminiApp
     from gemini_cli.cli.tui.widgets import QuotaPanel
@@ -894,23 +915,169 @@ async def test_tui_quota_panel_toggles_with_slash_and_escape() -> None:
         assert panel.display is False
 
 
-async def test_tui_theme_toggles_with_slash() -> None:
+async def test_tui_theme_menu_selects_light_and_persists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     from gemini_cli.cli.tui.app import GeminiApp
 
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_THEME", raising=False)
     app = GeminiApp(FakeRuntime())
 
     async with app.run_test(size=(120, 40)) as pilot:
         assert app._theme.name == "dark"
         await pilot.press("slash", "t", "h", "e", "m", "e", "enter")
+        await pilot.pause()
+        await pilot.press("down", "enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
-        assert app._theme.name == "light"
-        assert any("Theme: light" in line for line in app.transcript)
 
+    assert app._theme.name == "light"
+    assert any("Theme: light" in line for line in app.transcript)
+    assert "GEMINI_THEME=light" in (tmp_path / ".env").read_text()
+
+
+async def test_tui_theme_menu_cancel_keeps_theme() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("slash", "t", "h", "e", "m", "e", "enter")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+    assert app._theme.name == "dark"
+
+
+async def test_tui_theme_argument_is_not_available_yet() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press(
+            "slash",
+            "t",
+            "h",
+            "e",
+            "m",
+            "e",
+            "space",
+            "l",
+            "i",
+            "g",
+            "h",
+            "t",
+            "enter",
+        )
         await app.workers.wait_for_complete()
         await pilot.pause()
-        assert app._theme.name == "dark"
+
+    assert any(
+        "Theme arguments are not available yet" in line for line in app.transcript
+    )
+    assert app._theme.name == "dark"
+
+
+async def test_tui_theme_switch_restyles_existing_messages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.markdown import MarkdownMessageView
+    from gemini_cli.cli.tui.themes import DEFAULT_THEME, LIGHT_THEME
+    from gemini_cli.cli.tui.widgets import MessageView
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_THEME", raising=False)
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("h", "i", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        app._write_info("old info")
+        user_view = next(
+            view for view in app.query(MarkdownMessageView) if view._prefix == "User: "
+        )
+        info_view = list(app.query(MessageView))[-1]
+        assert user_view._prefix_style == f"bold {DEFAULT_THEME.user_color}"
+        assert info_view._text.style == DEFAULT_THEME.muted
+
+        await app._set_theme("light")
+        await pilot.pause()
+
+        assert user_view._prefix_style == f"bold {LIGHT_THEME.user_color}"
+        assert info_view._text.style == LIGHT_THEME.muted
+
+
+async def test_tui_light_theme_styles_modals() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.repl import theme_options
+    from gemini_cli.cli.tui.themes import LIGHT_THEME
+    from gemini_cli.cli.tui.widgets import ApprovalScreen, MenuScreen
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        app._theme = LIGHT_THEME
+        app._apply_theme()
+        await pilot.pause()
+
+        app.push_screen(MenuScreen(theme_options(), "Themes:", app._theme))
+        await pilot.pause()
+        assert (
+            app.screen.styles.background.hex.lower() == LIGHT_THEME.background.lower()
+        )
+        menu = app.screen.query_one("#menu")
+        assert menu.styles.background.hex.lower() == LIGHT_THEME.surface.lower()
+        await pilot.press("escape")
+        await pilot.pause()
+
+        app.push_screen(
+            ApprovalScreen("run a tool", "write", "path: a", theme=app._theme)
+        )
+        await pilot.pause()
+        assert (
+            app.screen.styles.background.hex.lower() == LIGHT_THEME.background.lower()
+        )
+        approval = app.screen.query_one("#approval")
+        assert approval.styles.background.hex.lower() == LIGHT_THEME.surface.lower()
+        await pilot.press("escape")
+
+
+async def test_run_tui_uses_the_configured_theme(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui import app as app_module
+
+    captured: dict[str, object] = {}
+
+    class FakeApp:
+        def __init__(
+            self,
+            runtime: object,
+            *,
+            bridge: object = None,
+            theme: object = None,
+        ) -> None:
+            captured["runtime"] = runtime
+            captured["theme"] = theme
+
+        async def run_async(self) -> None:
+            return None
+
+    monkeypatch.setattr(app_module, "GeminiApp", FakeApp)
+    runtime = FakeRuntime()
+    runtime.settings = Settings(_env_file=None, theme="light")
+
+    await app_module.run_tui(runtime)
+
+    theme = captured["theme"]
+    assert getattr(theme, "name", None) == "light"
 
 
 def test_menu_option_defaults() -> None:

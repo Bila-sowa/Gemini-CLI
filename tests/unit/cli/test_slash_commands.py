@@ -128,6 +128,12 @@ async def test_menu_commands_point_to_the_tui() -> None:
     assert text.count("needs the full-screen UI") == 3
 
 
+async def test_theme_argument_is_tui_only_in_line_mode() -> None:
+    text, _runtime = await run_commands(["/theme light"])
+
+    assert "needs the full-screen UI" in text
+
+
 async def test_plural_and_short_aliases_use_the_same_dispatch() -> None:
     text, _runtime = await run_commands(["/models", "/roles", "/themes", "/m"])
 

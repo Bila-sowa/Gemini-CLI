@@ -148,8 +148,8 @@ design goals and should not yet be interpreted as released functionality.
 - One-shot, non-interactive execution for scripts and CI workflows.
 - Textual-based terminal UI with dark/light themes and keyboard navigation.
 - Visible version, active model, role, and quota information.
-- Model and role changes made in the TUI are saved to `.env` for the next
-  session.
+- Model, role, and theme changes made in the TUI are saved to `.env` for the
+  next session.
 - Command completion for actions such as configuration, role switching, and
   credential reset.
 - Friendly slash commands with canonical names, plural and short aliases, and

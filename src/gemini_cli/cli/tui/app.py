@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from textual.app import App, ComposeResult
 from textual.binding import BindingType
@@ -33,16 +33,16 @@ from gemini_cli.cli.tui.repl import (
     AUTH_OPTIONS,
     model_options,
     role_options,
+    theme_options,
 )
 from gemini_cli.cli.tui.themes import (
     DEFAULT_THEME,
-    LIGHT_THEME,
     THEMES,
     Theme,
+    get_theme,
     to_textual_theme,
 )
 from gemini_cli.cli.tui.widgets import (
-    GEMINI_MUTED,
     ApprovalScreen,
     Logo,
     MenuScreen,
@@ -66,8 +66,8 @@ class GeminiApp(App[None]):
 
     CSS = """
     Screen {
-        background: #1E2023;
-        color: #E6E6E6;
+        background: $background;
+        color: $text;
     }
     #logo {
         height: 6;
@@ -75,7 +75,7 @@ class GeminiApp(App[None]):
     }
     #status {
         height: 3;
-        border: round #3A3F45;
+        border: round $primary 30%;
         padding: 0 1;
         margin: 0 1;
     }
@@ -83,7 +83,7 @@ class GeminiApp(App[None]):
         height: 1fr;
         margin: 0 1;
         padding: 0;
-        background: #1E2023;
+        background: $background;
         scrollbar-size: 1 1;
     }
     #waiting {
@@ -96,9 +96,9 @@ class GeminiApp(App[None]):
         margin: 0 0 0 0;
     }
     #prompt {
-        border: round #3A3F45;
+        border: round $primary 30%;
         margin: 0 1;
-        background: #1E2023;
+        background: $background;
     }
     #prompt:disabled {
         opacity: 60%;
@@ -107,25 +107,15 @@ class GeminiApp(App[None]):
         height: 1;
         margin: 0 1;
     }
-    Screen.light {
-        background: #F5F6F7;
-        color: #1E2023;
-    }
-    Screen.light #conversation, Screen.light #prompt {
-        background: #F5F6F7;
-    }
-    Screen.light #status, Screen.light #prompt, Screen.light #quota {
-        border: round #C7CCD3;
-    }
     ApprovalScreen {
         align: center middle;
-        background: #101214;
+        background: $background;
     }
     #approval {
         width: 72;
         height: auto;
-        border: round #3A3F45;
-        background: #24272B;
+        border: round $primary 30%;
+        background: $surface;
         padding: 1 2;
     }
     #approval-title {
@@ -149,20 +139,20 @@ class GeminiApp(App[None]):
     #quota {
         display: none;
         height: auto;
-        border: round #3A3F45;
+        border: round $primary 30%;
         padding: 0 1;
         margin: 0 1;
     }
     MenuScreen {
         align: center middle;
-        background: #101214;
+        background: $background;
     }
     #menu {
         width: 84;
         height: auto;
         max-height: 24;
-        border: round #3A3F45;
-        background: #24272B;
+        border: round $primary 30%;
+        background: $surface;
         padding: 1 2;
     }
     #menu-title {
@@ -172,7 +162,7 @@ class GeminiApp(App[None]):
     #menu-list {
         height: auto;
         max-height: 18;
-        background: #24272B;
+        background: $surface;
     }
     """
 
@@ -311,12 +301,17 @@ class GeminiApp(App[None]):
             case CommandAction.QUOTA:
                 self._toggle_quota()
             case CommandAction.THEME:
-                self._theme = (
-                    LIGHT_THEME if self._theme.name == "dark" else DEFAULT_THEME
+                if resolution.argument:
+                    self._write_info(
+                        "Theme arguments are not available yet. "
+                        "Use /theme to open the theme menu."
+                    )
+                    return
+                selected = await self.push_screen_wait(
+                    MenuScreen(theme_options(), "Themes:", self._theme)
                 )
-                self._apply_theme()
-                await self._rerender_markdown()
-                self._write_info(f"Theme: {self._theme.name}")
+                if selected is not None:
+                    await self._set_theme(selected.value)
 
     async def _rebuild(
         self,
@@ -348,7 +343,7 @@ class GeminiApp(App[None]):
         return True
 
     def _persist_env(self, key: str, value: str) -> None:
-        """Save a model or role choice in the project ``.env`` file."""
+        """Save a model, role, or theme choice in the project ``.env`` file."""
         path = Path.cwd() / ".env"
         try:
             set_env_value(path, key, value)
@@ -403,11 +398,16 @@ class GeminiApp(App[None]):
             self._refresh_status()
             self.transcript.append(view.plain)
 
+    async def _set_theme(self, name: str) -> None:
+        """Apply and persist a theme selected from the menu."""
+        self._theme = get_theme(name)
+        self._apply_theme()
+        await self._refresh_messages()
+        self._persist_env("GEMINI_THEME", self._theme.name)
+        self._write_info(f"Theme: {self._theme.name}")
+
     def _apply_theme(self) -> None:
         self.theme = f"gemini-{self._theme.name}"
-        screen = self.screen
-        screen.set_class(self._theme.name == "light", "light")
-        screen.set_class(self._theme.name == "dark", "dark")
         self.query_one(Logo).apply_theme(self._theme)
         self._refresh_status()
 
@@ -441,6 +441,7 @@ class GeminiApp(App[None]):
         *,
         initial: str = "",
         streaming: bool = False,
+        role: Literal["user", "assistant"] = "assistant",
     ) -> MarkdownMessageView:
         view = MarkdownMessageView(
             prefix,
@@ -448,6 +449,7 @@ class GeminiApp(App[None]):
             initial=initial,
             error_style=self._theme.error_color,
             streaming=streaming,
+            role=role,
         )
         self.query_one("#conversation", VerticalScroll).mount(view)
         return view
@@ -457,6 +459,7 @@ class GeminiApp(App[None]):
             "User: ",
             f"bold {self._theme.user_color}",
             initial=message,
+            role="user",
         )
         self.transcript.append(view.plain)
         self._scroll_to_end()
@@ -472,17 +475,22 @@ class GeminiApp(App[None]):
 
     def _write_info(self, message: str) -> None:
         self.transcript.append(message)
-        view = self._new_message("", GEMINI_MUTED)
-        view.append(message, style=GEMINI_MUTED)
+        style = self._theme.muted
+        view = self._new_message("", style)
+        view.append(message, style=style)
         self._scroll_to_end()
 
     def _scroll_to_end(self) -> None:
         self.query_one("#conversation", VerticalScroll).scroll_end(animate=False)
 
-    async def _rerender_markdown(self) -> None:
-        """Re-render conversation Markdown so it follows the new theme."""
+    async def _refresh_messages(self) -> None:
+        """Re-style existing messages so they follow the active theme."""
         for view in self.query(MarkdownMessageView):
+            view.apply_theme(self._theme)
             await view.rerender()
+
+        for info_view in self.query(MessageView):
+            info_view.apply_theme(self._theme.muted)
 
     def _toggle_quota(self) -> None:
         panel = self.query_one(QuotaPanel)
@@ -528,9 +536,11 @@ async def run_tui(
     runtime: CliRuntime,
     *,
     bridge: TuiApprovalBridge | None = None,
+    theme: Theme | None = None,
 ) -> None:
     """Run the full-screen terminal application."""
-    app = GeminiApp(runtime, bridge=bridge)
+    selected_theme = theme if theme is not None else get_theme(runtime.settings.theme)
+    app = GeminiApp(runtime, bridge=bridge, theme=selected_theme)
     if bridge is not None:
         bridge.attach(app)
     await app.run_async()

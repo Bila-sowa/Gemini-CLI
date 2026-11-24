@@ -137,6 +137,11 @@ class MessageView(Static):
         self._text.append(chunk, style=style)
         self.update(self._text)
 
+    def apply_theme(self, style: str) -> None:
+        """Re-style the whole message after a theme change."""
+        self._text = Text(self._text.plain, style=style)
+        self.update(self._text)
+
 
 WAITING_FRAMES: tuple[str, ...] = ("⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏")
 
@@ -222,12 +227,17 @@ class WaitingIndicator(Static):
             self._timer = None
 
 
-def _bar_text(percentage: float, color: str, width: int = 15) -> Text:
+def _bar_text(
+    percentage: float,
+    color: str,
+    empty_color: str,
+    width: int = 15,
+) -> Text:
     clamped = max(0.0, min(100.0, percentage))
     filled = round(clamped / 100 * width)
     text = Text()
     text.append("█" * filled, style=color)
-    text.append("░" * (width - filled), style=DEFAULT_THEME.border)
+    text.append("░" * (width - filled), style=empty_color)
     return text
 
 
@@ -249,7 +259,7 @@ def render_quota_text(
     text.append("─" * 44, style=theme.border)
     text.append("\n")
     text.append("  5h limit   ", style=theme.muted)
-    text.append_text(_bar_text(five_hour.percentage, theme.error_color))
+    text.append_text(_bar_text(five_hour.percentage, theme.error_color, theme.border))
     text.append(f"  {five_hour.percentage:>5.1f}%   ", style=theme.foreground)
     text.append(
         f"{_format_remaining(five_hour.time_remaining)} remaining",
@@ -257,7 +267,7 @@ def render_quota_text(
     )
     text.append("\n")
     text.append("  Weekly     ", style=theme.muted)
-    text.append_text(_bar_text(weekly.percentage, theme.success))
+    text.append_text(_bar_text(weekly.percentage, theme.success, theme.border))
     text.append(f"  {weekly.percentage:>5.1f}%   ", style=theme.foreground)
     text.append(
         f"{_format_remaining(weekly.time_remaining)} remaining",

@@ -64,6 +64,10 @@ AVAILABLE_ROLES: tuple[str, ...] = (
     "poet",
 )
 
+# Terminal themes
+DEFAULT_THEME_NAME: str = "dark"
+AVAILABLE_THEMES: tuple[str, ...] = ("dark", "light")
+
 # Config file paths
 GLOBAL_CONFIG_DIR_NAME: str = ".gemini-cli"
 GLOBAL_CONFIG_FILE_NAME: str = "config.toml"

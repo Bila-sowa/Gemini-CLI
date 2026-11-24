@@ -23,6 +23,7 @@ from gemini_cli.config.defaults import (
     DEFAULT_SHELL_MAX_OUTPUT_BYTES,
     DEFAULT_SHELL_TIMEOUT_SECONDS,
     DEFAULT_TELEMETRY_ENABLED,
+    DEFAULT_THEME_NAME,
 )
 
 
@@ -71,6 +72,7 @@ def test_defaults_apply_without_configuration() -> None:
     assert settings.shell_timeout_seconds == DEFAULT_SHELL_TIMEOUT_SECONDS
     assert settings.shell_max_output_bytes == DEFAULT_SHELL_MAX_OUTPUT_BYTES
     assert settings.role == DEFAULT_ROLE
+    assert settings.theme == DEFAULT_THEME_NAME
     assert settings.telemetry_enabled is DEFAULT_TELEMETRY_ENABLED
 
 
@@ -79,6 +81,7 @@ def test_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setenv("GEMINI_REQUEST_TIMEOUT_MS", "1234")
     monkeypatch.setenv("GEMINI_RETRY_ATTEMPTS", "0")
     monkeypatch.setenv("GEMINI_ROLE", "  CODE  ")
+    monkeypatch.setenv("GEMINI_THEME", "  LIGHT  ")
     monkeypatch.setenv("GEMINI_TELEMETRY_ENABLED", "true")
 
     settings = make_settings()
@@ -87,6 +90,7 @@ def test_environment_overrides_defaults(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.request_timeout_ms == 1234
     assert settings.retry_attempts == 0
     assert settings.role == "code"
+    assert settings.theme == "light"
     assert settings.telemetry_enabled is True
 
 
@@ -247,6 +251,11 @@ def test_unknown_environment_variables_are_ignored(
 def test_invalid_role_raises_validation_error() -> None:
     with pytest.raises(ValidationError, match="Unknown role"):
         make_settings(role="nonexistent")
+
+
+def test_invalid_theme_raises_validation_error() -> None:
+    with pytest.raises(ValidationError, match="Unknown theme"):
+        make_settings(theme="solarized")
 
 
 def test_api_key_may_be_empty() -> None:

@@ -183,7 +183,10 @@ The `cli` package is an adapter between users and the application core:
   approval modal, and selection menu;
 - `tui/repl.py` is the plain line fallback for pipes, CI, and `--no-tui`;
 - `tui/themes.py` keeps the dark and light palettes separate from behavior and
-  derives the Textual themes used by Markdown blocks.
+  derives the Textual themes used by Markdown blocks. The app CSS uses Textual
+  theme variables (`$background`, `$surface`, `$primary`, `$text`) so modal
+  screens follow the active palette; message widgets expose `apply_theme()` to
+  refresh speaker prefixes, hints, and errors after a theme change.
 
 The TUI streams agent events into the conversation, opens a modal confirmation
 for sensitive tool calls, and uses modal menus for role, model, and
@@ -359,11 +362,14 @@ from leaking into model requests.
 
 The `config` package owns typed configuration and instruction discovery:
 
-- `defaults.py` contains safe built-in defaults;
+- `defaults.py` contains safe built-in defaults, including available roles and
+  terminal themes;
 - `settings.py` loads and validates settings with the precedence `environment
-  variables > project configuration > global configuration > defaults`;
+  variables > project configuration > global configuration > defaults`, and
+  validates `theme` against the registered `dark`/`light` palettes;
 - `env_file.py` updates one dotenv key atomically, preserving comments and
-  unrelated entries; the TUI uses it for `GEMINI_MODEL` and `GEMINI_ROLE`;
+  unrelated entries; the TUI uses it for `GEMINI_MODEL`, `GEMINI_ROLE`, and
+  `GEMINI_THEME`;
 - `project_context.py` discovers and reads project instructions such as
   `GEMINI.md` and `AGENTS.md`.
 

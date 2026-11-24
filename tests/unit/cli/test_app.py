@@ -441,6 +441,7 @@ def test_config_show_redacts_api_key(
     assert "api_key: set" in result.stdout
     assert "top-secret" not in result.stdout
     assert "model: gemini-3.8-flash" in result.stdout
+    assert "theme: dark" in result.stdout
 
 
 def test_config_show_reports_missing_key(
@@ -466,6 +467,30 @@ def test_config_set_writes_project_file(
     assert result.exit_code == 0
     document = tomllib.loads((tmp_path / ".gemini-cli.toml").read_text())
     assert document["model"] == "gemini-2.5-pro"
+
+
+def test_config_set_writes_theme(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "set", "theme", "light"])
+
+    assert result.exit_code == 0
+    document = tomllib.loads((tmp_path / ".gemini-cli.toml").read_text())
+    assert document["theme"] == "light"
+
+
+def test_config_set_rejects_invalid_theme(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["config", "set", "theme", "solarized"])
+
+    assert result.exit_code == 1
 
 
 def test_config_set_preserves_existing_keys(
