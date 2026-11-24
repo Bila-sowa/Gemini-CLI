@@ -61,6 +61,7 @@ gemini_cli/
 │       ├── cli/
 │       │   ├── __init__.py
 │       │   ├── app.py
+│       │   ├── command_arguments.py
 │       │   ├── slash_commands.py
 │       │   ├── commands/
 │       │   │   ├── chat.py
@@ -162,10 +163,13 @@ The `cli` package is an adapter between users and the application core:
 - `waiting.py` derives the model-wait state from agent events and provides the
   Rich spinner used by `run` and the line fallback;
 - `slash_commands.py` is the single registry for interactive slash commands:
-  it declares canonical names, aliases, descriptions, and TUI-only markers,
-  then parses case-insensitive input and resolves exact names, aliases, or
-  unique prefixes. Ambiguous prefixes and misspellings produce a safe
-  suggestion instead of executing a command;
+  it declares canonical names, aliases, descriptions, argument metadata, and
+  TUI-only markers, then parses case-insensitive input and resolves exact
+  names, aliases, or unique prefixes. Ambiguous prefixes and misspellings
+  produce a safe suggestion instead of executing a command;
+- `command_arguments.py` validates `/model`, `/role`, and `/theme` arguments.
+  Models must be registered; roles and themes must match the configured
+  choices, and close misspellings receive a `Did you mean ...?` suggestion;
 - `commands/chat.py` starts an interactive conversation;
 - `commands/run.py` performs a single non-interactive request and is suitable
   for scripts and CI jobs;

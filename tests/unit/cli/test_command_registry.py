@@ -13,9 +13,12 @@ from gemini_cli.cli.slash_commands import (
     SlashCommand,
     _build_index,
     format_command_problem,
+    format_unexpected_argument,
     parse_slash_command,
+    render_command_help,
     render_help,
     resolve_command,
+    resolve_command_name,
 )
 
 
@@ -150,6 +153,62 @@ def test_help_lists_canonical_names_and_aliases() -> None:
     assert "/quit" in text
     assert "/usage" in text
     assert "/mod -> /model" in text
+
+
+def test_help_shows_argument_usage() -> None:
+    text = render_help()
+
+    assert "/model [name]" in text
+    assert "/role [role]" in text
+    assert "/theme [dark|light]" in text
+    assert "/help [command]" in text
+
+
+def test_command_help_describes_arguments_and_aliases() -> None:
+    resolved = resolve_command_name("model")
+    assert isinstance(resolved, ResolvedCommand)
+
+    text = render_command_help(resolved.spec)
+
+    assert "/model [name]" in text
+    assert "Change the model." in text
+    assert "/models" in text
+    assert "open the selection menu" in text
+
+
+def test_help_resolves_command_aliases() -> None:
+    resolved = resolve_command_name("/models")
+
+    assert isinstance(resolved, ResolvedCommand)
+    assert resolved.spec.action is CommandAction.MODEL
+
+
+def test_help_reports_unknown_commands_with_a_suggestion() -> None:
+    problem = resolve_command_name("modl")
+
+    assert isinstance(problem, CommandProblem)
+    assert problem.suggestion is not None
+    assert problem.suggestion.action is CommandAction.MODEL
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("/model gemini-4-argon", None),
+        ("/role code", None),
+        ("/theme dark", None),
+        ("/help model", None),
+        ("/clear extra", "/clear does not take arguments."),
+        ("/exit now", "/exit does not take arguments."),
+    ],
+)
+def test_unexpected_arguments_are_reported(
+    text: str,
+    expected: str | None,
+) -> None:
+    result = require_resolved(text)
+
+    assert format_unexpected_argument(result.spec, result.argument) == expected
 
 
 def test_all_spellings_are_unique() -> None:

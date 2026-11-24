@@ -152,8 +152,9 @@ design goals and should not yet be interpreted as released functionality.
   next session.
 - Command completion for actions such as configuration, role switching, and
   credential reset.
-- Friendly slash commands with canonical names, plural and short aliases, and
-  unambiguous prefix matching.
+- Friendly slash commands with canonical names, plural and short aliases,
+  unambiguous prefix matching, validated arguments, and `Did you mean ...?`
+  suggestions.
 - Focused assistant roles for general tasks, coding, creative work, deep
   analysis, and expressive writing.
 - Clear progress, structured errors, and recoverable tool failures.

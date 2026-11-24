@@ -37,6 +37,9 @@ class CommandSpec:
     aliases: tuple[str, ...] = ()
     description: str = ""
     tui_only: bool = False
+    argument_name: str | None = None
+    argument_required: bool = False
+    argument_choices: tuple[str, ...] = ()
 
     @property
     def spellings(self) -> tuple[str, ...]:
@@ -48,6 +51,19 @@ class CommandSpec:
         """Return the canonical command with its leading slash."""
         return f"/{self.name}"
 
+    @property
+    def usage(self) -> str:
+        """Return the command usage shown in help output."""
+        if self.argument_name is None:
+            return self.display_name
+        value = (
+            "|".join(self.argument_choices)
+            if self.argument_choices
+            else self.argument_name
+        )
+        brackets = ("<", ">") if self.argument_required else ("[", "]")
+        return f"{self.display_name} {brackets[0]}{value}{brackets[1]}"
+
 
 COMMANDS: tuple[CommandSpec, ...] = (
     CommandSpec(
@@ -55,6 +71,7 @@ COMMANDS: tuple[CommandSpec, ...] = (
         "help",
         ("h", "?", "commands"),
         "Show available commands.",
+        argument_name="command",
     ),
     CommandSpec(
         CommandAction.MODEL,
@@ -62,6 +79,7 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("models", "m"),
         "Change the model.",
         tui_only=True,
+        argument_name="name",
     ),
     CommandSpec(
         CommandAction.ROLE,
@@ -69,6 +87,7 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("roles",),
         "Change the assistant role.",
         tui_only=True,
+        argument_name="role",
     ),
     CommandSpec(
         CommandAction.AUTH,
@@ -90,6 +109,8 @@ COMMANDS: tuple[CommandSpec, ...] = (
         ("themes", "t"),
         "Switch the color theme.",
         tui_only=True,
+        argument_name="theme",
+        argument_choices=("dark", "light"),
     ),
     CommandSpec(
         CommandAction.CLEAR,
@@ -233,13 +254,57 @@ def format_command_problem(problem: CommandProblem) -> str:
     return f"Unknown command {problem.name}. Type /help for available commands."
 
 
+def resolve_command_name(name: str) -> ResolvedCommand | CommandProblem:
+    """Resolve a command name without requiring user input to start with ``/``."""
+    token = name.strip()
+    if not token:
+        return CommandProblem("/help")
+    if not token.startswith("/"):
+        token = f"/{token}"
+    return resolve_command(SlashCommand(token))
+
+
+def format_unexpected_argument(spec: CommandSpec, argument: str) -> str | None:
+    """Return an error when a command that takes no arguments receives one."""
+    if argument and spec.argument_name is None:
+        return f"{spec.display_name} does not take arguments."
+    return None
+
+
+def _usage_note(spec: CommandSpec) -> str:
+    """Return the short hint shown by ``/help <command>``."""
+    if spec.action is CommandAction.HELP and spec.argument_name is not None:
+        return "Omit the command name to list every command."
+    if spec.action is CommandAction.THEME and spec.argument_name is not None:
+        return "Omit the value in the full-screen UI to open the theme menu."
+    if spec.tui_only and spec.argument_name is not None:
+        return "Omit the value in the full-screen UI to open the selection menu."
+    return ""
+
+
+def render_command_help(spec: CommandSpec) -> str:
+    """Return detailed help for one command."""
+    lines = [spec.usage]
+    if spec.description:
+        lines.append(f"  {spec.description}")
+    if spec.aliases:
+        aliases = ", ".join(f"/{alias}" for alias in spec.aliases)
+        lines.append(f"  Aliases: {aliases}")
+    note = _usage_note(spec)
+    if note:
+        lines.append(f"  {note}")
+    return "\n".join(lines) + "\n"
+
+
 def render_help() -> str:
     """Return the shared slash-command help text."""
+    usages = [spec.usage for spec in COMMANDS]
+    width = max(len(usage) for usage in usages)
     lines = ["Commands:"]
     for spec in COMMANDS:
         aliases = ", ".join(f"/{alias}" for alias in spec.aliases)
         suffix = f"  (also {aliases})" if aliases else ""
-        lines.append(f"  {spec.display_name:<10} {spec.description}{suffix}")
+        lines.append(f"  {spec.usage:<{width}} {spec.description}{suffix}")
     lines.append("")
     lines.append(
         "Commands are case-insensitive; a unique prefix also works (/mod -> /model)."
@@ -256,7 +321,10 @@ __all__ = [
     "ResolvedCommand",
     "SlashCommand",
     "format_command_problem",
+    "format_unexpected_argument",
     "parse_slash_command",
+    "render_command_help",
     "render_help",
     "resolve_command",
+    "resolve_command_name",
 ]

@@ -19,14 +19,23 @@ from textual.widgets import Input
 
 from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.auth.credentials_store import delete_api_key
+from gemini_cli.cli.command_arguments import (
+    CommandArgumentError,
+    parse_model_argument,
+    parse_role_argument,
+    parse_theme_argument,
+)
 from gemini_cli.cli.runtime import CliRuntime, build_runtime
 from gemini_cli.cli.slash_commands import (
     CommandAction,
     CommandProblem,
     format_command_problem,
+    format_unexpected_argument,
     parse_slash_command,
+    render_command_help,
     render_help,
     resolve_command,
+    resolve_command_name,
 )
 from gemini_cli.cli.tui.markdown import MarkdownMessageView
 from gemini_cli.cli.tui.repl import (
@@ -251,11 +260,25 @@ class GeminiApp(App[None]):
             return
 
         spec = resolution.spec
+        unexpected = format_unexpected_argument(spec, resolution.argument)
+        if unexpected is not None:
+            self._write_info(unexpected)
+            return
+
         match spec.action:
             case CommandAction.EXIT:
                 self.exit()
             case CommandAction.HELP:
-                self._write_info(render_help().rstrip())
+                if resolution.argument:
+                    help_resolution = resolve_command_name(resolution.argument)
+                    if isinstance(help_resolution, CommandProblem):
+                        self._write_info(format_command_problem(help_resolution))
+                    else:
+                        self._write_info(
+                            render_command_help(help_resolution.spec).rstrip()
+                        )
+                else:
+                    self._write_info(render_help().rstrip())
             case CommandAction.CLEAR:
                 self.query_one("#conversation", VerticalScroll).remove_children()
                 self.session = Session(
@@ -264,21 +287,31 @@ class GeminiApp(App[None]):
                 )
                 self._write_info("Conversation cleared.")
             case CommandAction.ROLE:
-                selected = await self.push_screen_wait(
-                    MenuScreen(role_options(), "Roles:", self._theme)
-                )
-                if selected is not None and await self._rebuild(role=selected.value):
-                    self._persist_env("GEMINI_ROLE", selected.value)
-            case CommandAction.MODEL:
-                selected = await self.push_screen_wait(
-                    MenuScreen(
-                        model_options(self.runtime.settings.model),
-                        "Models:",
-                        self._theme,
+                if resolution.argument:
+                    await self._apply_role_argument(resolution.argument)
+                else:
+                    selected = await self.push_screen_wait(
+                        MenuScreen(role_options(), "Roles:", self._theme)
                     )
-                )
-                if selected is not None and await self._rebuild(model=selected.value):
-                    self._persist_env("GEMINI_MODEL", selected.value)
+                    if selected is not None and await self._rebuild(
+                        role=selected.value
+                    ):
+                        self._persist_env("GEMINI_ROLE", selected.value)
+            case CommandAction.MODEL:
+                if resolution.argument:
+                    await self._apply_model_argument(resolution.argument)
+                else:
+                    selected = await self.push_screen_wait(
+                        MenuScreen(
+                            model_options(self.runtime.settings.model),
+                            "Models:",
+                            self._theme,
+                        )
+                    )
+                    if selected is not None and await self._rebuild(
+                        model=selected.value
+                    ):
+                        self._persist_env("GEMINI_MODEL", selected.value)
             case CommandAction.AUTH:
                 selected = await self.push_screen_wait(
                     MenuScreen(AUTH_OPTIONS, "Authentication methods:", self._theme)
@@ -302,16 +335,13 @@ class GeminiApp(App[None]):
                 self._toggle_quota()
             case CommandAction.THEME:
                 if resolution.argument:
-                    self._write_info(
-                        "Theme arguments are not available yet. "
-                        "Use /theme to open the theme menu."
+                    await self._apply_theme_argument(resolution.argument)
+                else:
+                    selected = await self.push_screen_wait(
+                        MenuScreen(theme_options(), "Themes:", self._theme)
                     )
-                    return
-                selected = await self.push_screen_wait(
-                    MenuScreen(theme_options(), "Themes:", self._theme)
-                )
-                if selected is not None:
-                    await self._set_theme(selected.value)
+                    if selected is not None:
+                        await self._set_theme(selected.value)
 
     async def _rebuild(
         self,
@@ -341,6 +371,47 @@ class GeminiApp(App[None]):
         self.session.role = replacement.settings.role
         self._refresh_status()
         return True
+
+    async def _apply_model_argument(self, raw: str) -> None:
+        """Apply a model supplied directly on the command line."""
+        try:
+            value = parse_model_argument(raw)
+        except CommandArgumentError as exc:
+            self._write_info(f"Error: {exc}")
+            return
+
+        if value == self.runtime.settings.model:
+            self._write_info("Model unchanged.")
+            return
+
+        if await self._rebuild(model=value):
+            self._persist_env("GEMINI_MODEL", value)
+            self._write_info(f"Model: {value}")
+
+    async def _apply_role_argument(self, raw: str) -> None:
+        """Apply a role supplied directly on the command line."""
+        try:
+            value = parse_role_argument(raw)
+        except CommandArgumentError as exc:
+            self._write_info(f"Error: {exc}")
+            return
+
+        if value == self.runtime.settings.role:
+            self._write_info("Role unchanged.")
+            return
+
+        if await self._rebuild(role=value):
+            self._persist_env("GEMINI_ROLE", value)
+            self._write_info(f"Role: {value}")
+
+    async def _apply_theme_argument(self, raw: str) -> None:
+        """Apply a theme supplied directly on the command line."""
+        try:
+            value = parse_theme_argument(raw)
+        except CommandArgumentError as exc:
+            self._write_info(f"Error: {exc}")
+            return
+        await self._set_theme(value)
 
     def _persist_env(self, key: str, value: str) -> None:
         """Save a model, role, or theme choice in the project ``.env`` file."""

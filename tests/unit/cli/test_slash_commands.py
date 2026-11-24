@@ -41,11 +41,16 @@ class FakeAgent:
 
 
 class FakeRuntime:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        model: str = "gemini-3.8-flash",
+        role: str = "basic",
+    ) -> None:
         self.settings = Settings(
             _env_file=None,
-            model="gemini-3.8-flash",
-            role="basic",
+            model=model,
+            role=role,
         )
         self.agent = FakeAgent()
         self.quota = FakeQuota()
@@ -151,6 +156,111 @@ async def test_exit_aliases_do_not_contact_the_agent(command: str) -> None:
     _text, runtime = await run_commands([command])
 
     assert runtime.agent.calls == []
+
+
+async def test_model_argument_rebuilds_and_persists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built: list[FakeRuntime] = []
+    saved: list[tuple[str, str]] = []
+
+    async def fake_build(
+        settings: Settings,
+        *,
+        model: str | None = None,
+        role: str | None = None,
+        approval_callback: object = None,
+    ) -> FakeRuntime:
+        del approval_callback
+        replacement = FakeRuntime(
+            model=model or settings.model,
+            role=role or settings.role,
+        )
+        built.append(replacement)
+        return replacement
+
+    def fake_set_env(_path: object, key: str, value: str) -> None:
+        saved.append((key, value))
+
+    monkeypatch.setattr("gemini_cli.cli.tui.repl.build_runtime", fake_build)
+    monkeypatch.setattr("gemini_cli.cli.tui.repl.set_env_value", fake_set_env)
+
+    write, parts = collector()
+    runtime = FakeRuntime()
+    await run_repl(
+        runtime,
+        input_func=scripted_input(["/model gemini-4-argon", "hello", "/exit"]),
+        output=write,
+    )
+
+    assert built
+    assert built[0].settings.model == "gemini-4-argon"
+    assert saved == [("GEMINI_MODEL", "gemini-4-argon")]
+    assert built[0].agent.calls[0][0].model == "gemini-4-argon"
+    assert "Model: gemini-4-argon" in "".join(parts)
+
+
+async def test_role_argument_rebuilds_and_persists(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    built: list[FakeRuntime] = []
+    saved: list[tuple[str, str]] = []
+
+    async def fake_build(
+        settings: Settings,
+        *,
+        model: str | None = None,
+        role: str | None = None,
+        approval_callback: object = None,
+    ) -> FakeRuntime:
+        del approval_callback
+        replacement = FakeRuntime(
+            model=model or settings.model,
+            role=role or settings.role,
+        )
+        built.append(replacement)
+        return replacement
+
+    def fake_set_env(_path: object, key: str, value: str) -> None:
+        saved.append((key, value))
+
+    monkeypatch.setattr("gemini_cli.cli.tui.repl.build_runtime", fake_build)
+    monkeypatch.setattr("gemini_cli.cli.tui.repl.set_env_value", fake_set_env)
+
+    write, parts = collector()
+    runtime = FakeRuntime()
+    await run_repl(
+        runtime,
+        input_func=scripted_input(["/role code", "hello", "/exit"]),
+        output=write,
+    )
+
+    assert built
+    assert built[0].settings.role == "code"
+    assert saved == [("GEMINI_ROLE", "code")]
+    assert built[0].agent.calls[0][0].role == "code"
+    assert "Role: code" in "".join(parts)
+
+
+async def test_invalid_model_argument_suggests_a_close_match() -> None:
+    text, _runtime = await run_commands(["/model gemini-3.5-flash-lit"])
+
+    assert "Error: Unknown model" in text
+    assert "Did you mean 'gemini-3.5-flash-lite'?" in text
+
+
+async def test_help_command_shows_argument_details() -> None:
+    text, _runtime = await run_commands(["/help model"])
+
+    assert "/model [name]" in text
+    assert "Aliases: /models, /m" in text
+
+
+async def test_command_without_arguments_rejects_extra_text() -> None:
+    text, _runtime = await run_commands(["/clear extra"])
+
+    assert "/clear does not take arguments." in text
+    assert "Conversation cleared" not in text
 
 
 async def test_unknown_command_suggests_a_close_match() -> None:

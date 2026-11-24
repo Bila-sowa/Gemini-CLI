@@ -782,6 +782,126 @@ async def test_tui_role_menu_persists_choice(
     assert any("Saved GEMINI_ROLE" in line for line in app.transcript)
 
 
+async def test_tui_model_argument_rebuilds_and_persists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    app = GeminiApp(FakeRuntime())
+    calls: list[tuple[str | None, str | None]] = []
+
+    async def fake_rebuild(
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> bool:
+        calls.append((model, role))
+        return True
+
+    monkeypatch.setattr(app, "_rebuild", fake_rebuild)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *"models", "space", *"gemini-4-argon", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert calls == [("gemini-4-argon", None)]
+    assert any("Model: gemini-4-argon" in line for line in app.transcript)
+    assert "GEMINI_MODEL=gemini-4-argon" in (tmp_path / ".env").read_text()
+
+
+async def test_tui_model_argument_suggests_a_close_match(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+    calls: list[tuple[str | None, str | None]] = []
+
+    async def fake_rebuild(
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> bool:
+        calls.append((model, role))
+        return True
+
+    monkeypatch.setattr(app, "_rebuild", fake_rebuild)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *"model", "space", *"gemini-3.5-flash-lit", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert calls == []
+    assert any(
+        "Did you mean 'gemini-3.5-flash-lite'?" in line for line in app.transcript
+    )
+
+
+async def test_tui_role_argument_rebuilds_and_persists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_ROLE", raising=False)
+    app = GeminiApp(FakeRuntime())
+    calls: list[tuple[str | None, str | None]] = []
+
+    async def fake_rebuild(
+        *,
+        model: str | None = None,
+        role: str | None = None,
+    ) -> bool:
+        calls.append((model, role))
+        return True
+
+    monkeypatch.setattr(app, "_rebuild", fake_rebuild)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *"role", "space", *"code", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert calls == [(None, "code")]
+    assert any("Role: code" in line for line in app.transcript)
+    assert "GEMINI_ROLE=code" in (tmp_path / ".env").read_text()
+
+
+async def test_tui_help_command_shows_argument_details() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *"help", "space", *"model", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    text = "\n".join(app.transcript)
+    assert "/model [name]" in text
+    assert "Aliases: /models, /m" in text
+
+
+async def test_tui_command_without_arguments_rejects_extra_text() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *"clear", "space", *"extra", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("/clear does not take arguments." in line for line in app.transcript)
+    assert not any("Conversation cleared." in line for line in app.transcript)
+
+
 async def test_tui_model_menu_reports_env_write_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -952,33 +1072,37 @@ async def test_tui_theme_menu_cancel_keeps_theme() -> None:
     assert app._theme.name == "dark"
 
 
-async def test_tui_theme_argument_is_not_available_yet() -> None:
+async def test_tui_theme_argument_sets_theme_and_persists(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_THEME", raising=False)
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *"theme", "space", *"light", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert app._theme.name == "light"
+    assert any("Theme: light" in line for line in app.transcript)
+    assert "GEMINI_THEME=light" in (tmp_path / ".env").read_text()
+
+
+async def test_tui_theme_argument_suggests_a_close_match() -> None:
     from gemini_cli.cli.tui.app import GeminiApp
 
     app = GeminiApp(FakeRuntime())
 
     async with app.run_test(size=(120, 40)) as pilot:
-        await pilot.press(
-            "slash",
-            "t",
-            "h",
-            "e",
-            "m",
-            "e",
-            "space",
-            "l",
-            "i",
-            "g",
-            "h",
-            "t",
-            "enter",
-        )
+        await pilot.press("slash", *"theme", "space", *"lite", "enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
 
-    assert any(
-        "Theme arguments are not available yet" in line for line in app.transcript
-    )
+    assert any("Did you mean 'light'?" in line for line in app.transcript)
     assert app._theme.name == "dark"
 
 
