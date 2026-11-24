@@ -587,6 +587,7 @@ async def test_tui_help_lists_commands() -> None:
 
     assert any("Commands:" in line for line in app.transcript)
     assert any("/quota" in line for line in app.transcript)
+    assert any("/models" in line for line in app.transcript)
 
 
 async def test_tui_unknown_command_is_reported() -> None:
@@ -600,6 +601,78 @@ async def test_tui_unknown_command_is_reported() -> None:
         await pilot.pause()
 
     assert any("Unknown command /nope" in line for line in app.transcript)
+
+
+async def test_tui_unknown_command_suggests_a_close_match() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "m", "o", "d", "l", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any("Did you mean /model?" in line for line in app.transcript)
+
+
+async def test_tui_ambiguous_command_is_reported() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", "q", "u", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert any(
+        "ambiguous" in line and "/quota" in line and "/exit" in line
+        for line in app.transcript
+    )
+
+
+@pytest.mark.parametrize("command", ["models", "roles", "authentication"])
+async def test_tui_alias_opens_a_menu(command: str) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+    from gemini_cli.cli.tui.widgets import MenuScreen
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *command, "enter")
+        await pilot.pause()
+        assert isinstance(app.screen, MenuScreen)
+        await pilot.press("escape")
+        await pilot.pause()
+
+
+@pytest.mark.parametrize("command", ["q", "quit", "bye"])
+async def test_tui_exit_alias_quits(command: str) -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    app = GeminiApp(FakeRuntime())
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("slash", *command, "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert app.return_code == 0
+
+
+async def test_tui_is_slash_only_for_exit() -> None:
+    from gemini_cli.cli.tui.app import GeminiApp
+
+    runtime = FakeRuntime()
+    app = GeminiApp(runtime)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("e", "x", "i", "t", "enter")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+
+    assert [message for _session, message in runtime.agent.calls] == ["exit"]
 
 
 async def test_tui_role_menu_calls_rebuild(

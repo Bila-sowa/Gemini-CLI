@@ -128,6 +128,47 @@ async def test_menu_commands_point_to_the_tui() -> None:
     assert text.count("needs the full-screen UI") == 3
 
 
+async def test_plural_and_short_aliases_use_the_same_dispatch() -> None:
+    text, _runtime = await run_commands(["/models", "/roles", "/themes", "/m"])
+
+    assert text.count("needs the full-screen UI") == 4
+
+
+async def test_unique_prefix_uses_the_same_dispatch() -> None:
+    text, _runtime = await run_commands(["/mod"])
+
+    assert "/model needs the full-screen UI" in text
+
+
+@pytest.mark.parametrize("command", ["/q", "/quit", "/bye"])
+async def test_exit_aliases_do_not_contact_the_agent(command: str) -> None:
+    _text, runtime = await run_commands([command])
+
+    assert runtime.agent.calls == []
+
+
+async def test_unknown_command_suggests_a_close_match() -> None:
+    text, _runtime = await run_commands(["/modl"])
+
+    assert "Did you mean /model?" in text
+
+
+async def test_ambiguous_prefix_is_reported() -> None:
+    text, _runtime = await run_commands(["/qu"])
+
+    assert "ambiguous" in text
+    assert "/quota" in text
+    assert "/exit" in text
+
+
+async def test_help_lists_command_aliases() -> None:
+    text, _runtime = await run_commands(["/help"])
+
+    assert "/models" in text
+    assert "/quit" in text
+    assert "/usage" in text
+
+
 async def test_reset_removes_the_stored_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

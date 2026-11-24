@@ -61,6 +61,7 @@ gemini_cli/
 │       ├── cli/
 │       │   ├── __init__.py
 │       │   ├── app.py
+│       │   ├── slash_commands.py
 │       │   ├── commands/
 │       │   │   ├── chat.py
 │       │   │   ├── run.py
@@ -160,6 +161,11 @@ The `cli` package is an adapter between users and the application core:
   backend, and assembles the agent;
 - `waiting.py` derives the model-wait state from agent events and provides the
   Rich spinner used by `run` and the line fallback;
+- `slash_commands.py` is the single registry for interactive slash commands:
+  it declares canonical names, aliases, descriptions, and TUI-only markers,
+  then parses case-insensitive input and resolves exact names, aliases, or
+  unique prefixes. Ambiguous prefixes and misspellings produce a safe
+  suggestion instead of executing a command;
 - `commands/chat.py` starts an interactive conversation;
 - `commands/run.py` performs a single non-interactive request and is suitable
   for scripts and CI jobs;
@@ -183,7 +189,8 @@ The TUI streams agent events into the conversation, opens a modal confirmation
 for sensitive tool calls, and uses modal menus for role, model, and
 authentication selection. Model and role changes rebuild the runtime and are
 written atomically to the project `.env` file, so the next session starts with
-the same choice. A non-TTY environment falls back to line mode.
+the same choice. The TUI treats only slash-prefixed input as a command; other
+text is sent to the agent. A non-TTY environment falls back to line mode.
 
 User and assistant messages are parsed as Markdown after the speaker prefix,
 which stays separate so a user turn is not bold as a whole. Streaming reuses

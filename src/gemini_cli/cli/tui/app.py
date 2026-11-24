@@ -20,12 +20,18 @@ from textual.widgets import Input
 from gemini_cli.auth import AuthenticationError, CredentialStoreError
 from gemini_cli.auth.credentials_store import delete_api_key
 from gemini_cli.cli.runtime import CliRuntime, build_runtime
+from gemini_cli.cli.slash_commands import (
+    CommandAction,
+    CommandProblem,
+    format_command_problem,
+    parse_slash_command,
+    render_help,
+    resolve_command,
+)
 from gemini_cli.cli.tui.markdown import MarkdownMessageView
 from gemini_cli.cli.tui.repl import (
     AUTH_OPTIONS,
     model_options,
-    parse_slash_command,
-    render_help,
     role_options,
 )
 from gemini_cli.cli.tui.themes import (
@@ -249,80 +255,68 @@ class GeminiApp(App[None]):
         command = parse_slash_command(message)
         if command is None:
             return
-        name = command.name
-
-        if name in {"/exit", "/quit"}:
-            self.exit()
+        resolution = resolve_command(command)
+        if isinstance(resolution, CommandProblem):
+            self._write_info(format_command_problem(resolution))
             return
 
-        if name == "/help":
-            self._write_info(render_help().rstrip())
-            return
-
-        if name == "/clear":
-            self.query_one("#conversation", VerticalScroll).remove_children()
-            self.session = Session(
-                model=self.runtime.settings.model,
-                role=self.runtime.settings.role,
-            )
-            self._write_info("Conversation cleared.")
-            return
-
-        if name == "/role":
-            selected = await self.push_screen_wait(
-                MenuScreen(role_options(), "Roles:", self._theme)
-            )
-            if selected is not None and await self._rebuild(role=selected.value):
-                self._persist_env("GEMINI_ROLE", selected.value)
-            return
-
-        if name == "/model":
-            selected = await self.push_screen_wait(
-                MenuScreen(
-                    model_options(self.runtime.settings.model),
-                    "Models:",
-                    self._theme,
+        spec = resolution.spec
+        match spec.action:
+            case CommandAction.EXIT:
+                self.exit()
+            case CommandAction.HELP:
+                self._write_info(render_help().rstrip())
+            case CommandAction.CLEAR:
+                self.query_one("#conversation", VerticalScroll).remove_children()
+                self.session = Session(
+                    model=self.runtime.settings.model,
+                    role=self.runtime.settings.role,
                 )
-            )
-            if selected is not None and await self._rebuild(model=selected.value):
-                self._persist_env("GEMINI_MODEL", selected.value)
-            return
-
-        if name == "/auth":
-            selected = await self.push_screen_wait(
-                MenuScreen(AUTH_OPTIONS, "Authentication methods:", self._theme)
-            )
-            if selected is None:
-                return
-            if selected.value == "api_key":
-                self._write_info("Run 'gemini-cli-py login' to store an API key.")
-            else:
-                self._write_info("Google OAuth is not available yet.")
-            return
-
-        if name == "/reset":
-            try:
-                delete_api_key()
-            except CredentialStoreError as exc:
-                self._write_info(f"Error: {exc}")
-            else:
-                self._write_info(
-                    "Stored API key removed. Run 'gemini-cli-py login' again."
+                self._write_info("Conversation cleared.")
+            case CommandAction.ROLE:
+                selected = await self.push_screen_wait(
+                    MenuScreen(role_options(), "Roles:", self._theme)
                 )
-            return
-
-        if name == "/quota":
-            self._toggle_quota()
-            return
-
-        if name == "/theme":
-            self._theme = LIGHT_THEME if self._theme.name == "dark" else DEFAULT_THEME
-            self._apply_theme()
-            await self._rerender_markdown()
-            self._write_info(f"Theme: {self._theme.name}")
-            return
-
-        self._write_info(f"Unknown command {name}. Type /help for available commands.")
+                if selected is not None and await self._rebuild(role=selected.value):
+                    self._persist_env("GEMINI_ROLE", selected.value)
+            case CommandAction.MODEL:
+                selected = await self.push_screen_wait(
+                    MenuScreen(
+                        model_options(self.runtime.settings.model),
+                        "Models:",
+                        self._theme,
+                    )
+                )
+                if selected is not None and await self._rebuild(model=selected.value):
+                    self._persist_env("GEMINI_MODEL", selected.value)
+            case CommandAction.AUTH:
+                selected = await self.push_screen_wait(
+                    MenuScreen(AUTH_OPTIONS, "Authentication methods:", self._theme)
+                )
+                if selected is None:
+                    return
+                if selected.value == "api_key":
+                    self._write_info("Run 'gemini-cli-py login' to store an API key.")
+                else:
+                    self._write_info("Google OAuth is not available yet.")
+            case CommandAction.RESET:
+                try:
+                    delete_api_key()
+                except CredentialStoreError as exc:
+                    self._write_info(f"Error: {exc}")
+                else:
+                    self._write_info(
+                        "Stored API key removed. Run 'gemini-cli-py login' again."
+                    )
+            case CommandAction.QUOTA:
+                self._toggle_quota()
+            case CommandAction.THEME:
+                self._theme = (
+                    LIGHT_THEME if self._theme.name == "dark" else DEFAULT_THEME
+                )
+                self._apply_theme()
+                await self._rerender_markdown()
+                self._write_info(f"Theme: {self._theme.name}")
 
     async def _rebuild(
         self,

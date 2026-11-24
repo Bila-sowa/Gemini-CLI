@@ -15,6 +15,17 @@ from gemini_cli import __version__
 from gemini_cli.auth import CredentialStoreError
 from gemini_cli.auth.credentials_store import delete_api_key
 from gemini_cli.cli.runtime import CliRuntime
+from gemini_cli.cli.slash_commands import (
+    SLASH_COMMANDS,
+    CommandAction,
+    CommandProblem,
+    ResolvedCommand,
+    SlashCommand,
+    format_command_problem,
+    parse_slash_command,
+    render_help,
+    resolve_command,
+)
 from gemini_cli.cli.waiting import ModelWaitTracker, RichWaitIndicator
 from gemini_cli.config.defaults import AVAILABLE_ROLES
 from gemini_cli.core.session import Session
@@ -22,20 +33,9 @@ from gemini_cli.core.streaming import AgentEventType
 from gemini_cli.llm import MODEL_REGISTRY
 from gemini_cli.sandbox.approval import ApprovalDecision
 
-_EXIT_COMMANDS = frozenset({"/exit", "/quit", "exit", "quit"})
-_MENU_COMMANDS = frozenset({"/role", "/model", "/auth", "/quota", "/theme"})
-
-SLASH_COMMANDS: dict[str, str] = {
-    "/role": "Change the assistant role.",
-    "/model": "Change the model.",
-    "/reset": "Remove the stored API key.",
-    "/quota": "Show the quota panel.",
-    "/auth": "Show authentication methods.",
-    "/exit": "Exit the REPL.",
-    "/quit": "Exit the REPL.",
-    "/clear": "Clear the conversation.",
-    "/help": "Show available commands.",
-}
+# Legacy line-mode convenience: the TUI is slash-only, but the plain fallback
+# keeps accepting bare ``exit`` and ``quit`` from earlier releases.
+_BARE_EXIT_COMMANDS = frozenset({"exit", "quit"})
 
 ROLE_DESCRIPTIONS: dict[str, str] = {
     "basic": "Fast, reliable help for everyday tasks.",
@@ -44,14 +44,6 @@ ROLE_DESCRIPTIONS: dict[str, str] = {
     "analyser": "Built for deep analysis and clear insights.",
     "poet": "For poetry, prose, and expressive writing.",
 }
-
-
-@dataclass(frozen=True)
-class SlashCommand:
-    """A parsed slash command."""
-
-    name: str
-    argument: str = ""
 
 
 @dataclass(frozen=True)
@@ -75,23 +67,6 @@ AUTH_OPTIONS: tuple[MenuOption, ...] = (
         description="Store a key in the OS keyring.",
     ),
 )
-
-
-def parse_slash_command(text: str) -> SlashCommand | None:
-    """Parse a slash command, or return ``None`` for normal input."""
-    stripped = text.strip()
-    if not stripped.startswith("/"):
-        return None
-    name, _, argument = stripped.partition(" ")
-    return SlashCommand(name=name.lower(), argument=argument.strip())
-
-
-def render_help() -> str:
-    """Return the slash-command help text."""
-    lines = ["Commands:"]
-    for name, description in SLASH_COMMANDS.items():
-        lines.append(f"  {name:<8} {description}")
-    return "\n".join(lines) + "\n"
 
 
 def role_options() -> tuple[MenuOption, ...]:
@@ -184,12 +159,20 @@ async def run_repl(
         message = line.strip()
         if not message:
             continue
-        if message.lower() in _EXIT_COMMANDS:
+        if message.casefold() in _BARE_EXIT_COMMANDS:
             return
 
         command = parse_slash_command(message)
         if command is not None:
-            session = _handle_slash(command, runtime, session, write)
+            updated = _handle_slash(
+                resolve_command(command),
+                runtime,
+                session,
+                write,
+            )
+            if updated is None:
+                return
+            session = updated
             continue
 
         write(f"User: {message}\n")
@@ -203,34 +186,40 @@ async def run_repl(
 
 
 def _handle_slash(
-    command: SlashCommand,
+    resolution: ResolvedCommand | CommandProblem,
     runtime: CliRuntime,
     session: Session,
     write: Callable[[str], None],
-) -> Session:
-    name = command.name
-    if name == "/help":
-        write(render_help())
-    elif name == "/clear":
-        session = Session(
-            model=runtime.settings.model,
-            role=runtime.settings.role,
-        )
-        write("Conversation cleared.\n")
-    elif name == "/reset":
-        try:
-            delete_api_key()
-        except CredentialStoreError as exc:
-            write(f"Error: {exc}\n")
-        else:
-            write("Stored API key removed. Run 'gemini-cli-py login' again.\n")
-    elif name in _MENU_COMMANDS:
-        write(
-            f"{name} needs the full-screen UI. Run 'gemini-cli-py chat' "
-            "without --no-tui.\n"
-        )
-    else:
-        write(f"Unknown command {name}. Type /help for available commands.\n")
+) -> Session | None:
+    """Handle one resolved command; return ``None`` when the user exits."""
+    if isinstance(resolution, CommandProblem):
+        write(f"{format_command_problem(resolution)}\n")
+        return session
+
+    spec = resolution.spec
+    match spec.action:
+        case CommandAction.HELP:
+            write(render_help())
+        case CommandAction.CLEAR:
+            session = Session(
+                model=runtime.settings.model,
+                role=runtime.settings.role,
+            )
+            write("Conversation cleared.\n")
+        case CommandAction.RESET:
+            try:
+                delete_api_key()
+            except CredentialStoreError as exc:
+                write(f"Error: {exc}\n")
+            else:
+                write("Stored API key removed. Run 'gemini-cli-py login' again.\n")
+        case CommandAction.EXIT:
+            return None
+        case _:
+            write(
+                f"{spec.display_name} needs the full-screen UI. "
+                "Run 'gemini-cli-py chat' without --no-tui.\n"
+            )
     return session
 
 

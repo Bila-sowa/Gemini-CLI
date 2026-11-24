@@ -1,0 +1,185 @@
+"""Tests for the shared slash-command registry and resolver."""
+
+from __future__ import annotations
+
+import pytest
+
+from gemini_cli.cli.slash_commands import (
+    COMMANDS,
+    CommandAction,
+    CommandProblem,
+    CommandSpec,
+    ResolvedCommand,
+    SlashCommand,
+    _build_index,
+    format_command_problem,
+    parse_slash_command,
+    render_help,
+    resolve_command,
+)
+
+
+def resolve(text: str) -> ResolvedCommand | CommandProblem:
+    command = parse_slash_command(text)
+    assert command is not None
+    return resolve_command(command)
+
+
+def require_resolved(text: str) -> ResolvedCommand:
+    result = resolve(text)
+    assert isinstance(result, ResolvedCommand)
+    return result
+
+
+def require_problem(text: str) -> CommandProblem:
+    result = resolve(text)
+    assert isinstance(result, CommandProblem)
+    return result
+
+
+def test_every_canonical_name_resolves_to_its_command() -> None:
+    for spec in COMMANDS:
+        result = require_resolved(f"/{spec.name}")
+
+        assert result.spec is spec
+        assert result.argument == ""
+
+
+@pytest.mark.parametrize(
+    ("text", "action"),
+    [
+        ("/models", CommandAction.MODEL),
+        ("/roles", CommandAction.ROLE),
+        ("/themes", CommandAction.THEME),
+        ("/quotas", CommandAction.QUOTA),
+        ("/usage", CommandAction.QUOTA),
+        ("/limits", CommandAction.QUOTA),
+        ("/h", CommandAction.HELP),
+        ("/?", CommandAction.HELP),
+        ("/m", CommandAction.MODEL),
+        ("/t", CommandAction.THEME),
+        ("/q", CommandAction.EXIT),
+        ("/quit", CommandAction.EXIT),
+        ("/bye", CommandAction.EXIT),
+        ("/cls", CommandAction.CLEAR),
+        ("/new", CommandAction.CLEAR),
+        ("/logout", CommandAction.RESET),
+    ],
+)
+def test_aliases_resolve_to_the_expected_command(
+    text: str,
+    action: CommandAction,
+) -> None:
+    assert require_resolved(text).spec.action is action
+
+
+@pytest.mark.parametrize(
+    ("text", "action"),
+    [
+        ("/mod", CommandAction.MODEL),
+        ("/rol", CommandAction.ROLE),
+        ("/the", CommandAction.THEME),
+        ("/usa", CommandAction.QUOTA),
+        ("/qui", CommandAction.EXIT),
+        ("/quot", CommandAction.QUOTA),
+    ],
+)
+def test_unique_prefixes_resolve(text: str, action: CommandAction) -> None:
+    assert require_resolved(text).spec.action is action
+
+
+def test_exact_alias_wins_over_another_command_prefix() -> None:
+    assert require_resolved("/q").spec.action is CommandAction.EXIT
+
+
+@pytest.mark.parametrize("text", ["/r", "/qu"])
+def test_ambiguous_prefix_is_reported(text: str) -> None:
+    problem = require_problem(text)
+
+    assert problem.candidates
+    assert problem.suggestion is None
+
+
+def test_ambiguous_prefix_lists_canonical_candidates() -> None:
+    problem = require_problem("/r")
+
+    assert {spec.action for spec in problem.candidates} == {
+        CommandAction.ROLE,
+        CommandAction.RESET,
+    }
+
+
+def test_unknown_command_suggests_a_close_match() -> None:
+    problem = require_problem("/modl")
+
+    assert problem.suggestion is not None
+    assert problem.suggestion.action is CommandAction.MODEL
+
+
+def test_unknown_command_without_close_match_has_no_suggestion() -> None:
+    problem = require_problem("/zzzzzz")
+
+    assert problem.suggestion is None
+
+
+def test_resolution_is_case_insensitive() -> None:
+    assert require_resolved("/MODELS").spec.action is CommandAction.MODEL
+
+
+def test_arguments_are_preserved() -> None:
+    result = require_resolved("/model gemini-3.8-flash")
+
+    assert result.spec.action is CommandAction.MODEL
+    assert result.argument == "gemini-3.8-flash"
+
+
+def test_parser_accepts_tabs_and_extra_spaces() -> None:
+    assert parse_slash_command("/MODEL\tgemini-3.8-flash") == SlashCommand(
+        "/model",
+        "gemini-3.8-flash",
+    )
+    assert parse_slash_command("  /help  ") == SlashCommand("/help")
+
+
+def test_help_lists_canonical_names_and_aliases() -> None:
+    text = render_help()
+
+    assert "Commands:" in text
+    assert "/model" in text
+    assert "/models" in text
+    assert "/quit" in text
+    assert "/usage" in text
+    assert "/mod -> /model" in text
+
+
+def test_all_spellings_are_unique() -> None:
+    spellings = [spelling for spec in COMMANDS for spelling in spec.spellings]
+
+    assert len(spellings) == len(set(spellings))
+
+
+def test_every_action_has_exactly_one_spec() -> None:
+    actions = [spec.action for spec in COMMANDS]
+
+    assert len(actions) == len(set(actions))
+    assert set(actions) == set(CommandAction)
+
+
+def test_build_index_rejects_duplicate_spellings() -> None:
+    specs = (
+        CommandSpec(CommandAction.HELP, "help"),
+        CommandSpec(CommandAction.EXIT, "help"),
+    )
+
+    with pytest.raises(ValueError, match="Duplicate"):
+        _build_index(specs)
+
+
+def test_problem_messages_are_actionable() -> None:
+    ambiguous = format_command_problem(require_problem("/qu"))
+    unknown = format_command_problem(require_problem("/modl"))
+
+    assert "ambiguous" in ambiguous
+    assert "/quota" in ambiguous
+    assert "/exit" in ambiguous
+    assert "Did you mean /model?" in unknown

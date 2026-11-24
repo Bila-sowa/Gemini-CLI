@@ -362,12 +362,21 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
   `.env` atomically, preserving comments and unrelated keys. If the same key
   is present in the process environment, `.env` is written but the environment
   value still takes precedence and the TUI warns about it.
-- Slash commands: `/role`, `/model`, `/clear`, `/quota`, `/auth`, `/reset`,
-  `/theme`, `/help`, `/exit`, `/quit`. `/quota` renders colored five-hour and
+- Slash commands are declared once in `cli/slash_commands.py` and shared by the
+  TUI and the line fallback. Canonical names accept plural and short aliases:
+  `/model` (`/models`, `/m`), `/role` (`/roles`), `/auth` (`/authentication`),
+  `/quota` (`/quotas`, `/usage`, `/limits`), `/theme` (`/themes`, `/t`),
+  `/clear` (`/cls`, `/new`), `/reset` (`/reset-key`, `/remove-key`, `/logout`),
+  `/help` (`/h`, `/?`, `/commands`), and `/exit` (`/quit`, `/q`, `/bye`).
+  Matching is case-insensitive. An exact alias wins over another command's
+  prefix, and a unique prefix such as `/mod` also works. Ambiguous prefixes
+  (`/qu`) and misspellings (`/modl`) are reported with candidates or a
+  suggestion instead of being executed. `/quota` renders colored five-hour and
   weekly bars, and `/theme` switches the dark and light palettes at runtime.
 - `tui/repl.py` is the plain line fallback used by `--no-tui`, pipes, and CI.
-  It streams text and supports `/help`, `/clear`, `/reset`, and exit; commands
-  that need a menu point the user to the full-screen UI.
+  It streams text and uses the same command registry, including `/help`,
+  `/clear`, `/reset`, and `/exit`; commands that need a menu point the user to
+  the full-screen UI. Bare `exit` and `quit` remain accepted for compatibility.
 - `login` verifies the key against the API unless `--no-verify` is passed.
   `config set` validates through `Settings`, refuses `api_key` and
   `allowed_roots`, and writes to the project config or `--global`.
@@ -380,7 +389,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (771 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, Textual TUI, Markdown rendering, clipboard integration, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (826 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, slash-command registry and aliases, Textual TUI, Markdown rendering, clipboard integration, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -400,7 +409,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI commands (`chat`, `run`, `login`, `logout`, `auth status`, `config show/set`) | Available |
 | Full-screen terminal UI (`GeminiApp`, streaming, modal approval) | Available |
 | Markdown message rendering (`GeminiMarkdown`, streaming, inline `<u>`) | Available |
-| TUI menus and slash commands (`MenuScreen`, `/role`, `/model`, `/auth`, `/theme`) | Available (model and role choices persist to `.env`) |
+| TUI menus and slash commands (`MenuScreen`, `/role`, `/model`, `/auth`, `/theme`) | Available (aliases and prefixes resolve through `cli/slash_commands.py`; model and role choices persist to `.env`) |
 | Quota panel (`QuotaPanel`, colored 5h and weekly bars) | Available |
 | Line fallback (`run_repl`, `--no-tui`, non-TTY) | Available |
 | Terminal themes (`Theme`, dark and light) | Available |
