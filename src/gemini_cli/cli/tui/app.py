@@ -8,6 +8,7 @@ calls open a modal confirmation screen.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from typing import ClassVar, Literal
@@ -73,6 +74,12 @@ from gemini_cli.core.streaming import AgentEventType
 from gemini_cli.llm import UnknownModelError
 from gemini_cli.llm.prompts import PromptError
 from gemini_cli.sandbox.approval import ApprovalDecision
+
+DEFAULT_PROMPT_PLACEHOLDER = "Take your task"
+STOP_PROMPT_PLACEHOLDER = "Gemini is responding — press Esc to stop"
+TOOLS_PROMPT_PLACEHOLDER = "Running tools — press Esc to stop after they finish"
+STOPPING_PROMPT_PLACEHOLDER = "Stopping…"
+STOPPING_TOOLS_PROMPT_PLACEHOLDER = "Stopping after the current tool finishes…"
 
 
 class GeminiApp(App[None]):
@@ -182,7 +189,7 @@ class GeminiApp(App[None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [
         ("ctrl+q", "quit", "Quit"),
-        ("escape", "hide_context", "Hide context"),
+        ("escape", "stop_or_hide_context", "Stop / hide context"),
     ]
 
     def __init__(
@@ -198,6 +205,9 @@ class GeminiApp(App[None]):
         self._bridge = bridge
         self._theme = theme
         self._waiting_delay = waiting_delay
+        self._turn_active = False
+        self._model_active = False
+        self._stop_requested = False
         self.transcript: list[str] = []
         self.session = Session(
             model=runtime.settings.model,
@@ -209,7 +219,7 @@ class GeminiApp(App[None]):
         yield StatusBar()
         yield VerticalScroll(id="conversation")
         yield ContextPanel()
-        yield Input(placeholder="Take your task", id="prompt")
+        yield Input(placeholder=DEFAULT_PROMPT_PLACEHOLDER, id="prompt")
         yield RoleBar()
 
     def on_mount(self) -> None:
@@ -459,6 +469,10 @@ class GeminiApp(App[None]):
     async def _run_turn(self, message: str) -> None:
         prompt = self.query_one("#prompt", Input)
         prompt.disabled = True
+        self._turn_active = True
+        self._model_active = True
+        self._stop_requested = False
+        prompt.placeholder = STOP_PROMPT_PLACEHOLDER
         conversation = self.query_one("#conversation", VerticalScroll)
         view = self._new_markdown_message(
             "✦: ",
@@ -467,6 +481,7 @@ class GeminiApp(App[None]):
         )
         indicator = WaitingIndicator(self._theme, show_delay=self._waiting_delay)
         tracker = ModelWaitTracker()
+        stopped = False
         try:
             await conversation.mount(indicator)
             indicator.show()
@@ -485,17 +500,40 @@ class GeminiApp(App[None]):
                 elif event.event_type is AgentEventType.DONE:
                     break
 
-                if tracker.on_event(event.event_type):
-                    indicator.show()
+                if event.event_type is AgentEventType.TOOL_CALL_START:
+                    self._model_active = False
+                    if not self._stop_requested:
+                        prompt.placeholder = TOOLS_PROMPT_PLACEHOLDER
+
+                waiting = tracker.on_event(event.event_type)
+                if waiting:
+                    self._model_active = True
+                    if (
+                        event.event_type is AgentEventType.TOOL_CALL_END
+                        and self._stop_requested
+                    ):
+                        self.workers.cancel_group(self, "agent")
+                    else:
+                        prompt.placeholder = STOP_PROMPT_PLACEHOLDER
+                        indicator.show()
+        except asyncio.CancelledError:
+            stopped = True
+            raise
         finally:
             await view.finish()
             indicator.hide()
             if indicator.is_mounted:
                 await indicator.remove()
+            self._turn_active = False
+            self._model_active = False
+            self._stop_requested = False
+            prompt.placeholder = DEFAULT_PROMPT_PLACEHOLDER
             prompt.disabled = False
             prompt.focus()
-            self._refresh_status()
             self.transcript.append(view.plain)
+            if stopped:
+                self._write_info("Generation stopped.")
+            self._refresh_status()
 
     async def _set_theme(self, name: str) -> None:
         """Apply and persist a theme selected from the menu."""
@@ -603,6 +641,24 @@ class GeminiApp(App[None]):
                 self._theme,
             )
             self._scroll_to_end()
+
+    def action_stop_or_hide_context(self) -> None:
+        """Stop the active turn, or hide the context panel when idle."""
+        if self._turn_active:
+            self._request_stop()
+        else:
+            self.action_hide_context()
+
+    def _request_stop(self) -> None:
+        if self._stop_requested:
+            return
+        self._stop_requested = True
+        prompt = self.query_one("#prompt", Input)
+        if self._model_active:
+            prompt.placeholder = STOPPING_PROMPT_PLACEHOLDER
+            self.workers.cancel_group(self, "agent")
+        else:
+            prompt.placeholder = STOPPING_TOOLS_PROMPT_PLACEHOLDER
 
     def action_hide_context(self) -> None:
         self.query_one(ContextPanel).display = False

@@ -99,7 +99,7 @@ module is reported by name.
 - **Application logs:** Saved as JSON Lines to `~/.gemini-cli/logs/app.jsonl`.
 - **Telemetry logs:** Saved as JSON Lines to `~/.gemini-cli/logs/telemetry.jsonl` only when enabled (`GEMINI_TELEMETRY_ENABLED=true`). When telemetry is disabled (the default), no telemetry handler is attached, the telemetry logger is disabled, and events are discarded.
 - **Secret redaction:** The `RedactingFilter` automatically redacts API keys, passwords, tokens, and `AIza...` strings from log records before they are written to console or file outputs. Both `key=value` and `key:value` forms are covered, including prefixed names such as `GEMINI_API_KEY`.
-- **Telemetry privacy:** Telemetry events (`ModelCallEvent`, `ToolCallEvent`) record non-sensitive operational metrics (durations, token counts, statuses) and contain no prompt text or tool arguments.
+- **Telemetry privacy:** Telemetry events (`ModelCallEvent`, `ToolCallEvent`) record non-sensitive operational metrics (durations, token counts, statuses) and contain no prompt text or tool arguments. A user-cancelled stream is recorded with the `cancelled` status.
 
 ## LLM client
 
@@ -337,7 +337,11 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
   input, and role footer match the mockups. Assistant text streams into the
   conversation and errors are red. While a model request is pending, an inline
   `WaitingIndicator` animates; it is hidden before each text chunk and while
-  tools run.
+  tools run. While a turn is active, the prompt placeholder explains how to
+  stop (`Gemini is responding — press Esc to stop`) and changes while tools run.
+  Escape cancels the model stream immediately; during tool execution it stops
+  after the current batch, before the next model request. The partial assistant
+  text stays in the session and the input is re-enabled.
 - User and assistant messages are rendered as Markdown by `tui/markdown.py`.
   The speaker prefix is a separate widget, so a user turn is not bold as a
   whole. Assistant chunks go through `Markdown.get_stream()` and a final
@@ -412,7 +416,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (873 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, context-window tracking, CLI commands, slash-command registry, aliases, arguments and suggestions, Textual TUI, theme selection, persistence, and message restyling, Markdown rendering, clipboard integration, selection auto-copy, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (877 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, context-window tracking, request cancellation, CLI commands, slash-command registry, aliases, arguments and suggestions, Textual TUI, theme selection, persistence, and message restyling, Markdown rendering, clipboard integration, selection auto-copy, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |

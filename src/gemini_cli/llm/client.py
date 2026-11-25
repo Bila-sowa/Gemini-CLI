@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 MessageRole = Literal["user", "assistant", "tool"]
 StreamEventType = Literal["text_delta", "tool_call_delta", "usage", "done", "error"]
-CallStatus = Literal["success", "error", "timeout", "rate_limited"]
+CallStatus = Literal["success", "error", "timeout", "rate_limited", "cancelled"]
 
 MAX_ERROR_DETAIL_CHARS = 300
 _FALLBACK_STATUS_CODES = frozenset({404, 429, 500, 503})
@@ -637,6 +637,9 @@ class GeminiClient:
             remaining = accumulator.flush()
             if remaining is not None:
                 yield StreamEvent("tool_call_delta", data=remaining)
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
         except Exception as exc:
             status = _call_status(exc)
             yield StreamEvent(

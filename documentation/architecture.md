@@ -218,6 +218,15 @@ is suppressed while a tool call is in flight, so it never overlaps streamed text
 or tool execution. The CLI variants write to `stderr` and stay disabled when
 that stream is not a terminal.
 
+While a turn is active, the prompt placeholder explains how to stop, for
+example `Gemini is responding — press Esc to stop`; during tool execution it
+changes to a message about stopping after the running tools finish. Escape
+cancels the current model stream immediately. During tool execution it records
+the request and stops after the current tool batch, before the next model
+request. The partial assistant text is kept in the session, the input is
+re-enabled, and the context status is refreshed. Cancelled streams are reported
+to telemetry with the `cancelled` status.
+
 Commands that do not need the agent — help, version, auth, and config — never
 resolve credentials. The one-shot `run` command uses no approval callback, so
 destructive tools stay denied outside the interactive UI.

@@ -95,7 +95,7 @@ class ModelCallEvent:
     input_tokens: int
     output_tokens: int
     cached_tokens: int
-    status: Literal["success", "error", "timeout", "rate_limited"]
+    status: Literal["success", "error", "timeout", "rate_limited", "cancelled"]
     retry_count: int
 
 

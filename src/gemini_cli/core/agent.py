@@ -18,6 +18,7 @@ Safety rules enforced here:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Sequence
@@ -175,6 +176,29 @@ class Agent:
             yield error_event(_safe_error(exc))
             yield done_event()
 
+    @staticmethod
+    def _record_interrupted_turn(
+        session: Session,
+        text_parts: Sequence[str],
+        assistant_recorded: bool,
+    ) -> None:
+        """Keep the conversation valid after a user-requested stop.
+
+        A stream that was cancelled before its assistant turn was recorded
+        keeps the text received so far. A turn stopped after tool execution
+        receives a short assistant marker so the history does not end with a
+        tool observation.
+        """
+        if assistant_recorded:
+            last = session.last_message()
+            if last is not None and last.role == "tool":
+                session.add_assistant_message("[generation stopped]")
+            return
+
+        text = "".join(text_parts)
+        if text:
+            session.add_assistant_message(text)
+
     async def _run_turns(self, session: Session) -> AsyncIterator[AgentEvent]:
         tools = [
             ToolDefinition.from_export(entry)
@@ -207,54 +231,64 @@ class Agent:
             calls: list[ToolCallRequest] = []
             usage = UsageInfo()
             failed = False
+            assistant_recorded = False
 
-            async for stream_event in self._llm_client.generate_stream(
-                history,
-                tools or None,
-                self._system_prompt,
-            ):
-                if stream_event.event_type == "usage":
-                    if isinstance(stream_event.data, UsageInfo):
-                        usage = stream_event.data
-                    continue
-                if stream_event.event_type == "done":
-                    continue
+            try:
+                async for stream_event in self._llm_client.generate_stream(
+                    history,
+                    tools or None,
+                    self._system_prompt,
+                ):
+                    if stream_event.event_type == "usage":
+                        if isinstance(stream_event.data, UsageInfo):
+                            usage = stream_event.data
+                        continue
+                    if stream_event.event_type == "done":
+                        continue
 
-                mapped = from_stream_event(stream_event)
-                if mapped is None:
-                    continue
+                    mapped = from_stream_event(stream_event)
+                    if mapped is None:
+                        continue
 
-                if mapped.event_type is AgentEventType.ERROR:
-                    failed = True
+                    if mapped.event_type is AgentEventType.ERROR:
+                        failed = True
+                        yield mapped
+                        continue
+
+                    if mapped.event_type is AgentEventType.TOOL_CALL_START:
+                        if isinstance(mapped.data, ToolCallRequest):
+                            calls.append(mapped.data)
+                    elif mapped.event_type is AgentEventType.TEXT_CHUNK:
+                        text_parts.append(str(mapped.data))
+
                     yield mapped
-                    continue
 
-                if mapped.event_type is AgentEventType.TOOL_CALL_START:
-                    if isinstance(mapped.data, ToolCallRequest):
-                        calls.append(mapped.data)
-                elif mapped.event_type is AgentEventType.TEXT_CHUNK:
-                    text_parts.append(str(mapped.data))
+                if failed:
+                    yield done_event()
+                    return
 
-                yield mapped
+                session.add_assistant_message("".join(text_parts), tuple(calls))
+                assistant_recorded = True
+                session.update_usage(usage)
+                session.record_iteration()
 
-            if failed:
-                yield done_event()
-                return
+                if not calls:
+                    # Include the completed answer in the status shown after the
+                    # turn; the next request would report it one turn late.
+                    self.refresh_context(session)
+                    yield done_event()
+                    return
 
-            session.add_assistant_message("".join(text_parts), tuple(calls))
-            session.update_usage(usage)
-            session.record_iteration()
-
-            if not calls:
-                # Include the completed answer in the status shown after the
-                # turn; the next request would otherwise report it one turn late.
-                self.refresh_context(session)
-                yield done_event()
-                return
-
-            for call in calls:
-                async for event in self._handle_tool_call(session, call):
-                    yield event
+                for call in calls:
+                    async for event in self._handle_tool_call(session, call):
+                        yield event
+            except asyncio.CancelledError:
+                self._record_interrupted_turn(
+                    session,
+                    text_parts,
+                    assistant_recorded,
+                )
+                raise
 
     async def _handle_tool_call(
         self,

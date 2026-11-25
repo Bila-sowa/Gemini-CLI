@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import asyncio
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+import pytest
 
 from gemini_cli.config import Settings
 from gemini_cli.core.agent import Agent
@@ -481,3 +484,67 @@ async def test_context_status_is_recomputed_after_a_session_restore(
     assert after.used_tokens == before.used_tokens
     assert after.percentage == before.percentage
     assert after.trimmed == before.trimmed
+
+
+async def test_cancelled_stream_keeps_partial_assistant_text(
+    tmp_path: Path,
+) -> None:
+    class BlockingClient:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.closed = asyncio.Event()
+
+        async def generate_stream(
+            self,
+            messages: Sequence[Message],
+            tools: Sequence[object] | None = None,
+            system_instruction: str | None = None,
+        ) -> AsyncIterator[StreamEvent]:
+            del messages, tools, system_instruction
+            yield StreamEvent("text_delta", data="partial")
+            self.started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.closed.set()
+
+    settings = Settings(_env_file=None, allowed_roots=[tmp_path])
+    client = BlockingClient()
+    agent = Agent(
+        client,  # type: ignore[arg-type]
+        ToolRegistry(),
+        ApprovalManager(),
+        ContextManager(50_000),
+        ContextWindowTracker(50_000),
+        settings,
+        SYSTEM_PROMPT,
+    )
+    session = Session(model="gemini-2.5-flash")
+
+    async def consume() -> None:
+        async for _event in agent.run(session, "hello"):
+            pass
+
+    task = asyncio.create_task(consume())
+    await client.started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert client.closed.is_set()
+    assert [message.role for message in session.messages] == ["user", "assistant"]
+    assert session.messages[1].content == "partial"
+
+
+def test_interrupted_tool_turn_gets_an_assistant_marker() -> None:
+    call = ToolCallRequest(id="call_1", name="fake_tool", arguments={})
+    session = Session(model="gemini-2.5-flash")
+    session.add_user_message("hello")
+    session.add_assistant_message(tool_calls=(call,))
+    session.add_tool_result("call_1", ToolResult(success=True, output="ok"))
+
+    Agent._record_interrupted_turn(session, [], True)
+
+    assert session.last_message() is not None
+    assert session.last_message().content == "[generation stopped]"

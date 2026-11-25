@@ -442,6 +442,83 @@ async def test_tui_waiting_indicator_tracks_only_model_requests() -> None:
     assert any(line == "✦: Hi!" for line in app.transcript)
 
 
+async def test_tui_escape_stops_an_active_model_request() -> None:
+    from textual.widgets import Input
+
+    from gemini_cli.cli.tui.app import (
+        DEFAULT_PROMPT_PLACEHOLDER,
+        STOP_PROMPT_PLACEHOLDER,
+        GeminiApp,
+    )
+
+    gate = asyncio.Event()
+    runtime = FakeRuntime()
+    runtime.agent = GatedAgent(  # type: ignore[assignment]
+        [
+            gate,
+            AgentEvent(AgentEventType.TEXT_CHUNK, "partial"),
+            AgentEvent(AgentEventType.DONE),
+        ]
+    )
+    app = GeminiApp(runtime, waiting_delay=0)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("h", "i", "enter")
+        await pilot.pause(0.1)
+        prompt = app.query_one("#prompt", Input)
+        assert prompt.placeholder == STOP_PROMPT_PLACEHOLDER
+
+        await pilot.press("escape")
+        await pilot.pause(0.1)
+        await app.workers.wait_for_complete()
+
+        assert prompt.disabled is False
+        assert prompt.placeholder == DEFAULT_PROMPT_PLACEHOLDER
+        assert any("Generation stopped." in line for line in app.transcript)
+
+
+async def test_tui_escape_during_tools_stops_after_the_batch() -> None:
+    from textual.widgets import Input
+
+    from gemini_cli.cli.tui.app import (
+        DEFAULT_PROMPT_PLACEHOLDER,
+        STOPPING_TOOLS_PROMPT_PLACEHOLDER,
+        GeminiApp,
+    )
+
+    tools_done = asyncio.Event()
+    next_request = asyncio.Event()
+    runtime = FakeRuntime()
+    runtime.agent = GatedAgent(  # type: ignore[assignment]
+        [
+            AgentEvent(AgentEventType.TOOL_CALL_START),
+            tools_done,
+            AgentEvent(AgentEventType.TOOL_CALL_END),
+            next_request,
+            AgentEvent(AgentEventType.DONE),
+        ]
+    )
+    app = GeminiApp(runtime, waiting_delay=0)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("h", "i", "enter")
+        await pilot.pause(0.1)
+
+        await pilot.press("escape")
+        await pilot.pause(0.1)
+        prompt = app.query_one("#prompt", Input)
+        assert prompt.placeholder == STOPPING_TOOLS_PROMPT_PLACEHOLDER
+        assert prompt.disabled is True
+
+        tools_done.set()
+        await pilot.pause(0.1)
+        await app.workers.wait_for_complete()
+
+        assert prompt.disabled is False
+        assert prompt.placeholder == DEFAULT_PROMPT_PLACEHOLDER
+        assert any("Generation stopped." in line for line in app.transcript)
+
+
 async def test_tui_waiting_indicator_animates_frames() -> None:
     from gemini_cli.cli.tui.app import GeminiApp
     from gemini_cli.cli.tui.widgets import WaitingIndicator

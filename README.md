@@ -148,6 +148,8 @@ design goals and should not yet be interpreted as released functionality.
 - Selecting text with the mouse copies it automatically and confirms the copy
   with a short notification.
 - Animated waiting indicator while a model response is pending.
+- Interrupt an in-flight model response with `Esc`; the partial answer is kept
+  and the prompt becomes available again.
 - One-shot, non-interactive execution for scripts and CI workflows.
 - Textual-based terminal UI with dark/light themes and keyboard navigation.
 - Visible version, active model, role, and context-window usage.
