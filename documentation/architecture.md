@@ -177,14 +177,14 @@ The `cli` package is an adapter between users and the application core:
 - `commands/config.py` reads and updates user-facing configuration;
 - `commands/mcp.py` will manage configured MCP servers in Phase 9;
 - `tui/app.py` is the full-screen Textual application: ASCII wordmark, status
-  bar, scrollable conversation, prompt, quota panel, and role footer;
+  bar, scrollable conversation, prompt, context panel, and role footer;
 - `tui/markdown.py` renders user and assistant messages with the Textual GFM
   parser, sanitizes control sequences, adds inline `<u>`, and keeps links
   non-clickable;
 - `tui/clipboard.py` copies code blocks and finished mouse selections through
   native desktop helpers and saves a private fallback file when neither a
   helper nor OSC 52 is available;
-- `tui/widgets.py` contains the logo, status bar, message view, quota panel,
+- `tui/widgets.py` contains the logo, status bar, message view, context panel,
   approval modal, and selection menu;
 - `tui/repl.py` is the plain line fallback for pipes, CI, and `--no-tui`;
 - `tui/themes.py` keeps the dark and light palettes separate from behavior and
@@ -238,8 +238,8 @@ The `core` package owns model-independent orchestration and never imports the
 2. Fit the history to the model window, export tool declarations, and stream a
    response.
 3. Emit text and thinking events as they arrive and buffer complete tool calls.
-4. Record the assistant turn, usage, and quota consumption, then check the
-   iteration limit.
+4. Record the assistant turn and usage, refresh the context-window status,
+   then check the iteration limit.
 5. For each tool call, check approval, dispatch through the registry, and add
    exactly one observation — including denied, unknown, and failed calls.
 6. Repeat until the model answers without tool calls or the limit is reached.
@@ -256,10 +256,14 @@ indivisible groups first. It never separates an assistant tool call from its
 observations, never removes the most recent messages, and keeps the history
 starting with a user turn.
 
-`core/quota_tracker.py` records reported usage in `~/.gemini-cli/quota.json`
-using an atomic, private write and reports rolling five-hour and seven-day
-windows. The limits are local policy derived from published free-tier
-averages, not a provider guarantee.
+`core/context_tracker.py` derives how much of the active model's context
+window a conversation occupies. The estimate reuses the same token heuristic
+as `ContextManager` (system prompt, tool declarations, and the fitted
+history), and the percentage is measured against the input budget
+`context_window - max_output_tokens`. The status is a view of one session, not
+persisted state: `/clear`, a model change, or a future restored session
+recomputes it from the conversation history. No quota file is written, and the
+provider is not assumed to expose a remaining-token endpoint.
 
 `core/streaming.py` defines the stable `AgentEvent` contract. Both the
 interactive TUI and non-interactive command can consume these events without

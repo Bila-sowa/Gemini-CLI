@@ -128,10 +128,6 @@ async def test_build_runtime_registers_builtin_tools(
         "gemini_cli.cli.runtime.resolve_api_key",
         lambda settings: ResolvedApiKey(key="test-key", source="environment"),
     )
-    monkeypatch.setattr(
-        "gemini_cli.core.quota_tracker._default_storage_path",
-        lambda: tmp_path / "quota.json",
-    )
 
     settings = Settings(_env_file=None, allowed_roots=[])
     runtime = await build_runtime(settings)
@@ -153,10 +149,6 @@ async def test_build_runtime_applies_model_and_role_overrides(
         "gemini_cli.cli.runtime.resolve_api_key",
         lambda settings: ResolvedApiKey(key="test-key", source="environment"),
     )
-    monkeypatch.setattr(
-        "gemini_cli.core.quota_tracker._default_storage_path",
-        lambda: tmp_path / "quota.json",
-    )
 
     settings = Settings(_env_file=None, allowed_roots=[tmp_path])
     runtime = await build_runtime(settings, model="gemini-2.5-pro", role="code")
@@ -177,10 +169,6 @@ async def test_build_runtime_accepts_custom_model(
         "gemini_cli.cli.runtime.resolve_api_key",
         lambda settings: ResolvedApiKey(key="test-key", source="environment"),
     )
-    monkeypatch.setattr(
-        "gemini_cli.core.quota_tracker._default_storage_path",
-        lambda: tmp_path / "quota.json",
-    )
 
     settings = Settings(_env_file=None, allowed_roots=[tmp_path])
 
@@ -188,6 +176,7 @@ async def test_build_runtime_accepts_custom_model(
     try:
         assert runtime.settings.model == "gemini-does-not-exist"
         assert runtime.context.max_tokens == 1_040_384
+        assert runtime.context_window.budget_tokens == 1_040_384
     finally:
         runtime.close()
 
@@ -200,10 +189,6 @@ async def test_build_runtime_rejects_invalid_model_name(
     monkeypatch.setattr(
         "gemini_cli.cli.runtime.resolve_api_key",
         lambda settings: ResolvedApiKey(key="test-key", source="environment"),
-    )
-    monkeypatch.setattr(
-        "gemini_cli.core.quota_tracker._default_storage_path",
-        lambda: tmp_path / "quota.json",
     )
 
     settings = Settings(_env_file=None, allowed_roots=[tmp_path])

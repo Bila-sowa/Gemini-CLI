@@ -14,7 +14,7 @@ from gemini_cli.auth.api_key import resolve_api_key
 from gemini_cli.config import Settings, load_project_context
 from gemini_cli.core.agent import Agent
 from gemini_cli.core.context_manager import ContextManager
-from gemini_cli.core.quota_tracker import QuotaTracker
+from gemini_cli.core.context_tracker import ContextWindowTracker
 from gemini_cli.llm import GeminiClient, resolve_model
 from gemini_cli.llm.prompts import build_system_prompt
 from gemini_cli.sandbox import (
@@ -46,7 +46,7 @@ class CliRuntime:
     registry: ToolRegistry
     approval: ApprovalManager
     context: ContextManager
-    quota: QuotaTracker
+    context_window: ContextWindowTracker
     agent: Agent
 
     def close(self) -> None:
@@ -126,9 +126,9 @@ async def build_runtime(
     context = ContextManager(
         max_tokens=max(1, model_info.context_window - resolved.max_output_tokens),
     )
-    quota = QuotaTracker(
-        five_hour_limit=resolved.quota_5h_token_limit,
-        weekly_limit=resolved.quota_weekly_token_limit,
+    context_window = ContextWindowTracker(
+        window_tokens=model_info.context_window,
+        reserved_output_tokens=resolved.max_output_tokens,
     )
     client = GeminiClient(resolved, api_key=resolved_key.key)
     approval = ApprovalManager(approval_callback)
@@ -137,7 +137,7 @@ async def build_runtime(
         registry,
         approval,
         context,
-        quota,
+        context_window,
         resolved,
         system_prompt,
     )
@@ -149,7 +149,7 @@ async def build_runtime(
         registry=registry,
         approval=approval,
         context=context,
-        quota=quota,
+        context_window=context_window,
         agent=agent,
     )
 

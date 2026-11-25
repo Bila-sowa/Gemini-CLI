@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Callable, Sequence
-from datetime import timedelta
 
 import pytest
 
@@ -13,22 +12,32 @@ from gemini_cli.cli.tui.repl import (
     run_repl,
 )
 from gemini_cli.config import Settings
-from gemini_cli.core.quota_tracker import QuotaWindowStatus
+from gemini_cli.core.context_tracker import ContextWindowStatus
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEvent
 
 
-class FakeQuota:
-    def get_5h_status(self) -> QuotaWindowStatus:
-        return QuotaWindowStatus(100_000, 200_000, 50.0, timedelta(hours=2))
+class FakeContext:
+    def reset(self) -> None:
+        pass
 
-    def get_weekly_status(self) -> QuotaWindowStatus:
-        return QuotaWindowStatus(310_000, 1_000_000, 31.0, timedelta(days=3))
+    def status(self) -> ContextWindowStatus:
+        return ContextWindowStatus(
+            used_tokens=130_000,
+            window_tokens=1_048_576,
+            budget_tokens=1_040_384,
+            reserved_output_tokens=8_192,
+            percentage=12.5,
+            remaining_tokens=910_384,
+        )
 
 
 class FakeAgent:
     def __init__(self) -> None:
         self.calls: list[tuple[Session, str]] = []
+
+    def refresh_context(self, session: Session) -> None:
+        del session
 
     async def run(
         self,
@@ -53,7 +62,7 @@ class FakeRuntime:
             role=role,
         )
         self.agent = FakeAgent()
-        self.quota = FakeQuota()
+        self.context_window = FakeContext()
         self.closed = False
 
     def close(self) -> None:
@@ -112,7 +121,7 @@ async def test_help_lists_commands() -> None:
     text, _runtime = await run_commands(["/help"])
 
     assert "Commands:" in text
-    assert "/quota" in text
+    assert "/context" in text
 
 
 async def test_clear_resets_the_conversation() -> None:
@@ -270,11 +279,11 @@ async def test_unknown_command_suggests_a_close_match() -> None:
 
 
 async def test_ambiguous_prefix_is_reported() -> None:
-    text, _runtime = await run_commands(["/qu"])
+    text, _runtime = await run_commands(["/c"])
 
     assert "ambiguous" in text
-    assert "/quota" in text
-    assert "/exit" in text
+    assert "/clear" in text
+    assert "/context" in text
 
 
 async def test_help_lists_command_aliases() -> None:
@@ -282,7 +291,7 @@ async def test_help_lists_command_aliases() -> None:
 
     assert "/models" in text
     assert "/quit" in text
-    assert "/usage" in text
+    assert "/ctx" in text
 
 
 async def test_reset_removes_the_stored_key(

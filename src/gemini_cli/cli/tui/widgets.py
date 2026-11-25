@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import timedelta
 from typing import ClassVar
 
 from rich.text import Text
@@ -19,7 +18,7 @@ from gemini_cli import __version__
 from gemini_cli.cli.tui.repl import MenuOption
 from gemini_cli.cli.tui.themes import DEFAULT_THEME, Theme
 from gemini_cli.cli.waiting import WAITING_SHOW_DELAY, WAITING_TEXT
-from gemini_cli.core.quota_tracker import QuotaWindowStatus
+from gemini_cli.core.context_tracker import ContextWindowStatus
 
 GEMINI_BLUE = DEFAULT_THEME.accent
 GEMINI_ORANGE = DEFAULT_THEME.warning
@@ -59,12 +58,12 @@ class Logo(Static):
 
 
 class StatusBar(Static):
-    """Version, model, and quota line inside a bordered box."""
+    """Version, model, and context-window line inside a bordered box."""
 
     def __init__(self) -> None:
         super().__init__(id="status")
         self._plain = ""
-        self.update_status(model="", used_tokens=0, limit_tokens=0)
+        self.update_status(model="", used_tokens=0, budget_tokens=0, percentage=0.0)
 
     @property
     def plain(self) -> str:
@@ -76,19 +75,25 @@ class StatusBar(Static):
         *,
         model: str,
         used_tokens: int,
-        limit_tokens: int,
+        budget_tokens: int,
+        percentage: float,
         theme: Theme = DEFAULT_THEME,
     ) -> None:
-        quota = f"{compact_tokens(used_tokens)}/{compact_tokens(limit_tokens)} tokens"
-        self._plain = f">_  version: v{__version__}    model: {model}    quota: {quota}"
+        context = (
+            f"{compact_tokens(used_tokens)}/{compact_tokens(budget_tokens)} "
+            f"({percentage:.1f}%)"
+        )
+        self._plain = (
+            f">_  version: v{__version__}    model: {model}    context: {context}"
+        )
         text = Text()
         text.append(">_  ", style=theme.accent)
         text.append("version: ", style=theme.muted)
         text.append(f"v{__version__}    ", style=theme.foreground)
         text.append("model: ", style=theme.muted)
         text.append(f"{model}    ", style=theme.accent)
-        text.append("quota: ", style=theme.muted)
-        text.append(quota, style=theme.warning)
+        text.append("context: ", style=theme.muted)
+        text.append(context, style=theme.warning)
         self.update(text)
 
 
@@ -241,46 +246,49 @@ def _bar_text(
     return text
 
 
-def _format_remaining(delta: timedelta) -> str:
-    seconds = max(0, int(delta.total_seconds()))
-    hours, remainder = divmod(seconds, 3600)
-    minutes = remainder // 60
-    return f"{hours}h {minutes:02d}m"
-
-
-def render_quota_text(
-    five_hour: QuotaWindowStatus,
-    weekly: QuotaWindowStatus,
+def render_context_text(
+    status: ContextWindowStatus,
+    model: str,
     theme: Theme = DEFAULT_THEME,
 ) -> Text:
-    """Render the quota panel as styled Rich text."""
+    """Render the context-window panel as styled Rich text."""
     text = Text()
-    text.append("─ QUOTA ", style=f"bold {theme.muted}")
-    text.append("─" * 44, style=theme.border)
+    text.append("─ CONTEXT ", style=f"bold {theme.muted}")
+    text.append("─" * 42, style=theme.border)
     text.append("\n")
-    text.append("  5h limit   ", style=theme.muted)
-    text.append_text(_bar_text(five_hour.percentage, theme.error_color, theme.border))
-    text.append(f"  {five_hour.percentage:>5.1f}%   ", style=theme.foreground)
+    text.append("  Model      ", style=theme.muted)
+    text.append(model, style=theme.accent)
+    text.append("\n")
+    text.append("  Window     ", style=theme.muted)
     text.append(
-        f"{_format_remaining(five_hour.time_remaining)} remaining",
-        style=theme.muted,
+        f"{compact_tokens(status.window_tokens)} tokens",
+        style=theme.foreground,
     )
     text.append("\n")
-    text.append("  Weekly     ", style=theme.muted)
-    text.append_text(_bar_text(weekly.percentage, theme.success, theme.border))
-    text.append(f"  {weekly.percentage:>5.1f}%   ", style=theme.foreground)
+    text.append("  Used       ", style=theme.muted)
     text.append(
-        f"{_format_remaining(weekly.time_remaining)} remaining",
-        style=theme.muted,
+        f"{compact_tokens(status.used_tokens)} / "
+        f"{compact_tokens(status.budget_tokens)}",
+        style=theme.foreground,
+    )
+    text.append(f"  {status.percentage:>5.1f}%", style=theme.warning)
+    text.append("\n")
+    text.append("  ")
+    text.append_text(_bar_text(status.percentage, theme.success, theme.border))
+    text.append("\n")
+    text.append("  Remaining  ", style=theme.muted)
+    text.append(
+        f"{compact_tokens(status.remaining_tokens)} tokens",
+        style=theme.foreground,
     )
     return text
 
 
-class QuotaPanel(Static):
-    """Inline quota panel toggled with /quota."""
+class ContextPanel(Static):
+    """Inline context-window panel toggled with /context."""
 
     def __init__(self) -> None:
-        super().__init__(id="quota")
+        super().__init__(id="context")
         self._plain = ""
         self.display = False
 
@@ -288,13 +296,13 @@ class QuotaPanel(Static):
     def plain(self) -> str:
         return self._plain
 
-    def update_quota(
+    def update_context(
         self,
-        five_hour: QuotaWindowStatus,
-        weekly: QuotaWindowStatus,
+        status: ContextWindowStatus,
+        model: str,
         theme: Theme = DEFAULT_THEME,
     ) -> None:
-        rendered = render_quota_text(five_hour, weekly, theme)
+        rendered = render_context_text(status, model, theme)
         self._plain = rendered.plain
         self.update(rendered)
 
@@ -409,13 +417,13 @@ __all__ = [
     "GEMINI_ORANGE",
     "GEMINI_RED",
     "ApprovalScreen",
+    "ContextPanel",
     "Logo",
     "MenuScreen",
     "MessageView",
-    "QuotaPanel",
     "RoleBar",
     "StatusBar",
     "WaitingIndicator",
     "compact_tokens",
-    "render_quota_text",
+    "render_context_text",
 ]

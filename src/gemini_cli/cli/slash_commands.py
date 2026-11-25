@@ -23,7 +23,7 @@ class CommandAction(StrEnum):
     MODEL = "model"
     AUTH = "auth"
     RESET = "reset"
-    QUOTA = "quota"
+    CONTEXT = "context"
     THEME = "theme"
     EXIT = "exit"
 
@@ -97,10 +97,10 @@ COMMANDS: tuple[CommandSpec, ...] = (
         tui_only=True,
     ),
     CommandSpec(
-        CommandAction.QUOTA,
-        "quota",
-        ("quotas", "usage", "limits"),
-        "Show the quota panel.",
+        CommandAction.CONTEXT,
+        "context",
+        ("ctx", "window"),
+        "Show the context window panel.",
         tui_only=True,
     ),
     CommandSpec(

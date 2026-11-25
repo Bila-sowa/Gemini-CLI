@@ -303,10 +303,14 @@ on `cli` or `tui`; the acceptance suite enforces that with an import check.
   trims the oldest complete groups first. It never separates an assistant tool
   call from its observations, never removes the most recent messages, and
   keeps the history starting with a user turn.
-- `QuotaTracker` records reported usage in `~/.gemini-cli/quota.json` with an
-  atomic, private write. It reports rolling five-hour and seven-day windows;
-  the limits are configurable policy derived from published free-tier averages,
-  not provider guarantees.
+- `ContextWindowTracker` derives context occupancy from the system prompt, the
+  exported tool declarations, and the fitted history, using the same token
+  estimate as `ContextManager`. The percentage is measured against
+  `context_window - max_output_tokens`. It keeps no state on disk, so a model
+  change or a restored session recomputes the status from the conversation.
+  `observe()` is the agent's hot-path update; `refresh()` rebuilds the status
+  from an arbitrary message list and is the entry point for future session
+  restore.
 - `AgentEvent` and `AgentEventType` are the presentation contract. Text,
   thinking, tool, error, and done events stay stable across providers.
 - `Agent.run()` streams model output, checks approval before every dispatch,
@@ -374,14 +378,14 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 - Slash commands are declared once in `cli/slash_commands.py` and shared by the
   TUI and the line fallback. Canonical names accept plural and short aliases:
   `/model` (`/models`, `/m`), `/role` (`/roles`), `/auth` (`/authentication`),
-  `/quota` (`/quotas`, `/usage`, `/limits`), `/theme` (`/themes`, `/t`),
+  `/context` (`/ctx`, `/window`), `/theme` (`/themes`, `/t`),
   `/clear` (`/cls`, `/new`), `/reset` (`/reset-key`, `/remove-key`, `/logout`),
   `/help` (`/h`, `/?`, `/commands`), and `/exit` (`/quit`, `/q`, `/bye`).
   Matching is case-insensitive. An exact alias wins over another command's
   prefix, and a unique prefix such as `/mod` also works. Ambiguous prefixes
-  (`/qu`) and misspellings (`/modl`) are reported with candidates or a
-  suggestion instead of being executed. `/quota` renders colored five-hour and
-  weekly bars, and `/theme` opens the theme menu; the chosen palette is applied
+  (`/c`) and misspellings (`/modl`) are reported with candidates or a
+  suggestion instead of being executed. `/context` renders the context-window
+  panel, and `/theme` opens the theme menu; the chosen palette is applied
   immediately and saved to `.env` for the next session.
 - Commands accept validated arguments: `/model <name>`, `/role <role>`,
   `/theme <dark|light>`, and `/help <command>`. Only registered models are
@@ -408,7 +412,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | CLI `--version` and `--help` | Available |
 | Ruff / mypy | Available |
 | Python version (`.python-version`) | Available (3.12) |
-| Test suite | Available (883 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, CLI commands, slash-command registry, aliases, arguments and suggestions, Textual TUI, theme selection, persistence, and message restyling, Markdown rendering, clipboard integration, selection auto-copy, line fallback, and the Phase 5–8 acceptance checks) |
+| Test suite | Available (873 tests: smoke, import, entry-point, configuration, dotenv updates, authentication, logging/telemetry, LLM client, tool system, all built-in tools, sandbox backends, approvals, agent core runtime, context-window tracking, CLI commands, slash-command registry, aliases, arguments and suggestions, Textual TUI, theme selection, persistence, and message restyling, Markdown rendering, clipboard integration, selection auto-copy, line fallback, and the Phase 5–8 acceptance checks) |
 | Configuration (`Settings`, project context) | Available |
 | Authentication (API key resolution, keyring store, OAuth stub) | Available |
 | Logging and Telemetry (`configure_logging`, secret redaction) | Available |
@@ -421,7 +425,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | Approval manager (`ApprovalManager`) | Available (fail-closed policy) |
 | Conversation session (`Session`) | Available |
 | Context manager (`ContextManager`) | Available (local token estimate, group trimming) |
-| Local quota tracker (`QuotaTracker`) | Available (rolling 5h and 7d windows) |
+| Context window tracker (`ContextWindowTracker`) | Available (local estimate against the model window, no persistence) |
 | Agent events (`AgentEvent`, `AgentEventType`) | Available |
 | Agent loop (`Agent`) | Available (streaming, approvals, iteration limit) |
 | CLI runtime (`build_runtime`) | Available (lazy credentials, built-in tools, backend selection) |
@@ -429,7 +433,7 @@ Gemini client directly. Integration tests use the scripted `FakeLLMClient` and
 | Full-screen terminal UI (`GeminiApp`, streaming, modal approval) | Available |
 | Markdown message rendering (`GeminiMarkdown`, streaming, inline `<u>`) | Available |
 | TUI menus and slash commands (`MenuScreen`, `/role`, `/model`, `/auth`, `/theme`) | Available (aliases, prefixes, and validated arguments resolve through `cli/slash_commands.py` and `cli/command_arguments.py`; model, role, and theme choices persist to `.env`) |
-| Quota panel (`QuotaPanel`, colored 5h and weekly bars) | Available |
+| Context panel (`ContextPanel`, window and budget bar) | Available |
 | Line fallback (`run_repl`, `--no-tui`, non-TTY) | Available |
 | Terminal themes (`Theme`, dark and light) | Available |
 | Web tool (`fetch_url`) | Available (public HTTP(S), SSRF guards, size limit) |

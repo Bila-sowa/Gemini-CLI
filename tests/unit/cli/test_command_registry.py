@@ -54,9 +54,8 @@ def test_every_canonical_name_resolves_to_its_command() -> None:
         ("/models", CommandAction.MODEL),
         ("/roles", CommandAction.ROLE),
         ("/themes", CommandAction.THEME),
-        ("/quotas", CommandAction.QUOTA),
-        ("/usage", CommandAction.QUOTA),
-        ("/limits", CommandAction.QUOTA),
+        ("/ctx", CommandAction.CONTEXT),
+        ("/window", CommandAction.CONTEXT),
         ("/h", CommandAction.HELP),
         ("/?", CommandAction.HELP),
         ("/m", CommandAction.MODEL),
@@ -82,9 +81,9 @@ def test_aliases_resolve_to_the_expected_command(
         ("/mod", CommandAction.MODEL),
         ("/rol", CommandAction.ROLE),
         ("/the", CommandAction.THEME),
-        ("/usa", CommandAction.QUOTA),
+        ("/con", CommandAction.CONTEXT),
         ("/qui", CommandAction.EXIT),
-        ("/quot", CommandAction.QUOTA),
+        ("/win", CommandAction.CONTEXT),
     ],
 )
 def test_unique_prefixes_resolve(text: str, action: CommandAction) -> None:
@@ -95,7 +94,7 @@ def test_exact_alias_wins_over_another_command_prefix() -> None:
     assert require_resolved("/q").spec.action is CommandAction.EXIT
 
 
-@pytest.mark.parametrize("text", ["/r", "/qu"])
+@pytest.mark.parametrize("text", ["/r", "/c"])
 def test_ambiguous_prefix_is_reported(text: str) -> None:
     problem = require_problem(text)
 
@@ -151,7 +150,7 @@ def test_help_lists_canonical_names_and_aliases() -> None:
     assert "/model" in text
     assert "/models" in text
     assert "/quit" in text
-    assert "/usage" in text
+    assert "/ctx" in text
     assert "/mod -> /model" in text
 
 
@@ -235,10 +234,10 @@ def test_build_index_rejects_duplicate_spellings() -> None:
 
 
 def test_problem_messages_are_actionable() -> None:
-    ambiguous = format_command_problem(require_problem("/qu"))
+    ambiguous = format_command_problem(require_problem("/c"))
     unknown = format_command_problem(require_problem("/modl"))
 
     assert "ambiguous" in ambiguous
-    assert "/quota" in ambiguous
-    assert "/exit" in ambiguous
+    assert "/clear" in ambiguous
+    assert "/context" in ambiguous
     assert "Did you mean /model?" in unknown

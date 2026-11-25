@@ -20,16 +20,17 @@
 > storage, structured logging with opt-in telemetry, the Gemini client (model
 > registry, retry, fallback, prompt templates, and streaming), the tool system
 > with filesystem, web, code, and shell tools, the sandbox with a fail-closed
-> approval manager, and the agent core with sessions, context trimming, local
-> quota accounting, and the streaming think-act-observe loop. Phase 8 adds the
-> terminal interface: `chat`, `run`, `login`, `logout`, `auth status`, and
-> `config show/set`, with a full-screen Textual UI, ASCII wordmark, streaming
-> output, modal approval and selection screens, a quota panel, dark/light
-> themes, and a plain line fallback for pipes and CI. MCP integration is not
-> implemented yet. The package installs, `gemini-cli-py --version` works, and CI
-> runs lint, type checks, and the test suite on Python 3.11–3.13. The
-> screenshots below are interface concepts, and the feature list describes the
-> intended product scope. The package has not been published to PyPI yet.
+> approval manager, and the agent core with sessions, context trimming,
+> context-window tracking, and the streaming think-act-observe loop. Phase 8
+> adds the terminal interface: `chat`, `run`, `login`, `logout`,
+> `auth status`, and `config show/set`, with a full-screen Textual UI, ASCII
+> wordmark, streaming output, modal approval and selection screens, a context
+> panel, dark/light themes, and a plain line fallback for pipes and CI. MCP
+> integration is not implemented yet. The package installs,
+> `gemini-cli-py --version` works, and CI runs lint, type checks, and the test
+> suite on Python 3.11–3.13. The screenshots below are interface concepts, and
+> the feature list describes the intended product scope. The package has not
+> been published to PyPI yet.
 
 ## About
 
@@ -101,7 +102,7 @@ experience. Visuals and commands may change as implementation progresses.
 <table>
   <tr>
     <td width="50%" align="center">
-      <strong>Quota overview</strong>
+      <strong>Context overview</strong>
     </td>
     <td width="50%" align="center">
       <strong>Model selection</strong>
@@ -109,7 +110,7 @@ experience. Visuals and commands may change as implementation progresses.
   </tr>
   <tr>
     <td>
-      <img src="./documentation/ui/model/Terminal-3.png" alt="Gemini CLI quota overview">
+      <img src="./documentation/ui/model/Terminal-3.png" alt="Gemini CLI context overview">
     </td>
     <td>
       <img src="./documentation/ui/model/Terminal-4.png" alt="Gemini CLI model selection">
@@ -149,7 +150,7 @@ design goals and should not yet be interpreted as released functionality.
 - Animated waiting indicator while a model response is pending.
 - One-shot, non-interactive execution for scripts and CI workflows.
 - Textual-based terminal UI with dark/light themes and keyboard navigation.
-- Visible version, active model, role, and quota information.
+- Visible version, active model, role, and context-window usage.
 - Model, role, and theme changes made in the TUI are saved to `.env` for the
   next session.
 - Command completion for actions such as configuration, role switching, and

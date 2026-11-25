@@ -58,10 +58,10 @@ from gemini_cli.cli.tui.themes import (
 )
 from gemini_cli.cli.tui.widgets import (
     ApprovalScreen,
+    ContextPanel,
     Logo,
     MenuScreen,
     MessageView,
-    QuotaPanel,
     RoleBar,
     StatusBar,
     WaitingIndicator,
@@ -150,7 +150,7 @@ class GeminiApp(App[None]):
     #approval-buttons Button {
         margin-left: 2;
     }
-    #quota {
+    #context {
         display: none;
         height: auto;
         border: round $primary 30%;
@@ -182,7 +182,7 @@ class GeminiApp(App[None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [
         ("ctrl+q", "quit", "Quit"),
-        ("escape", "hide_quota", "Hide quota"),
+        ("escape", "hide_context", "Hide context"),
     ]
 
     def __init__(
@@ -208,7 +208,7 @@ class GeminiApp(App[None]):
         yield Logo()
         yield StatusBar()
         yield VerticalScroll(id="conversation")
-        yield QuotaPanel()
+        yield ContextPanel()
         yield Input(placeholder="Take your task", id="prompt")
         yield RoleBar()
 
@@ -311,6 +311,8 @@ class GeminiApp(App[None]):
                     model=self.runtime.settings.model,
                     role=self.runtime.settings.role,
                 )
+                self.runtime.context_window.reset()
+                self._refresh_status()
                 self._write_info("Conversation cleared.")
             case CommandAction.ROLE:
                 if resolution.argument:
@@ -357,8 +359,8 @@ class GeminiApp(App[None]):
                     self._write_info(
                         "Stored API key removed. Run 'gemini-cli-py login' again."
                     )
-            case CommandAction.QUOTA:
-                self._toggle_quota()
+            case CommandAction.CONTEXT:
+                self._toggle_context()
             case CommandAction.THEME:
                 if resolution.argument:
                     await self._apply_theme_argument(resolution.argument)
@@ -509,20 +511,22 @@ class GeminiApp(App[None]):
         self._refresh_status()
 
     def _refresh_status(self) -> None:
-        quota = self.runtime.quota.get_5h_status()
+        self.runtime.agent.refresh_context(self.session)
+        context = self.runtime.context_window.status()
         self.query_one(StatusBar).update_status(
             model=self.runtime.settings.model,
-            used_tokens=quota.used_tokens,
-            limit_tokens=quota.limit_tokens,
+            used_tokens=context.used_tokens,
+            budget_tokens=context.budget_tokens,
+            percentage=context.percentage,
             theme=self._theme,
         )
         self.query_one(RoleBar).update_role(
             self.runtime.settings.role,
             self._theme,
         )
-        self.query_one(QuotaPanel).update_quota(
-            self.runtime.quota.get_5h_status(),
-            self.runtime.quota.get_weekly_status(),
+        self.query_one(ContextPanel).update_context(
+            context,
+            self.runtime.settings.model,
             self._theme,
         )
 
@@ -589,18 +593,19 @@ class GeminiApp(App[None]):
         for info_view in self.query(MessageView):
             info_view.apply_theme(self._theme.muted)
 
-    def _toggle_quota(self) -> None:
-        panel = self.query_one(QuotaPanel)
+    def _toggle_context(self) -> None:
+        panel = self.query_one(ContextPanel)
         panel.display = not panel.display
         if panel.display:
-            panel.update_quota(
-                self.runtime.quota.get_5h_status(),
-                self.runtime.quota.get_weekly_status(),
+            panel.update_context(
+                self.runtime.context_window.status(),
+                self.runtime.settings.model,
+                self._theme,
             )
             self._scroll_to_end()
 
-    def action_hide_quota(self) -> None:
-        self.query_one(QuotaPanel).display = False
+    def action_hide_context(self) -> None:
+        self.query_one(ContextPanel).display = False
 
 
 class TuiApprovalBridge:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Callable, Sequence
-from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -20,29 +19,29 @@ from gemini_cli.cli.tui.repl import (
 )
 from gemini_cli.config import Settings
 from gemini_cli.config.env_file import EnvFileError
-from gemini_cli.core.quota_tracker import QuotaWindowStatus
+from gemini_cli.core.context_tracker import ContextWindowStatus
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEvent, AgentEventType
 from gemini_cli.sandbox.approval import ApprovalDecision
 
 
-class FakeQuota:
-    """Deterministic quota statuses."""
+class FakeContext:
+    """Deterministic context-window tracker."""
 
-    def get_5h_status(self) -> QuotaWindowStatus:
-        return QuotaWindowStatus(
-            used_tokens=100_000,
-            limit_tokens=200_000,
-            percentage=50.0,
-            time_remaining=timedelta(hours=2),
-        )
+    def __init__(self) -> None:
+        self.reset_calls = 0
 
-    def get_weekly_status(self) -> QuotaWindowStatus:
-        return QuotaWindowStatus(
-            used_tokens=310_000,
-            limit_tokens=1_000_000,
-            percentage=31.0,
-            time_remaining=timedelta(days=3),
+    def reset(self) -> None:
+        self.reset_calls += 1
+
+    def status(self) -> ContextWindowStatus:
+        return ContextWindowStatus(
+            used_tokens=130_000,
+            window_tokens=1_048_576,
+            budget_tokens=1_040_384,
+            reserved_output_tokens=8_192,
+            percentage=12.5,
+            remaining_tokens=910_384,
         )
 
 
@@ -52,6 +51,9 @@ class FakeAgent:
     def __init__(self, events: Sequence[AgentEvent] = ()) -> None:
         self.events = list(events)
         self.calls: list[tuple[Session, str]] = []
+
+    def refresh_context(self, session: Session) -> None:
+        del session
 
     async def run(
         self,
@@ -68,6 +70,9 @@ class GatedAgent:
 
     def __init__(self, steps: Sequence[AgentEvent | asyncio.Event]) -> None:
         self.steps = list(steps)
+
+    def refresh_context(self, session: Session) -> None:
+        del session
 
     async def run(
         self,
@@ -108,7 +113,7 @@ class FakeRuntime:
     ) -> None:
         self.settings = Settings(_env_file=None, model=model, role=role)
         self.agent = FakeAgent(events)
-        self.quota = FakeQuota()
+        self.context_window = FakeContext()
         self.closed = False
 
     def close(self) -> None:
@@ -352,6 +357,7 @@ async def test_tui_shell_renders_status_and_footer() -> None:
         await pilot.pause()
         assert "version" in app.query_one(StatusBar).plain
         assert "gemini-3.8-flash" in app.query_one(StatusBar).plain
+        assert "context: 130k/1.0M (12.5%)" in app.query_one(StatusBar).plain
         assert "Gemini Basic" in app.query_one(RoleBar).plain
         assert any("Can I help you today?" in line for line in app.transcript)
 
@@ -594,7 +600,7 @@ async def test_tui_help_lists_commands() -> None:
         await pilot.pause()
 
     assert any("Commands:" in line for line in app.transcript)
-    assert any("/quota" in line for line in app.transcript)
+    assert any("/context" in line for line in app.transcript)
     assert any("/models" in line for line in app.transcript)
 
 
@@ -630,12 +636,12 @@ async def test_tui_ambiguous_command_is_reported() -> None:
     app = GeminiApp(FakeRuntime())
 
     async with app.run_test(size=(120, 40)) as pilot:
-        await pilot.press("slash", "q", "u", "enter")
+        await pilot.press("slash", "c", "enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
 
     assert any(
-        "ambiguous" in line and "/quota" in line and "/exit" in line
+        "ambiguous" in line and "/clear" in line and "/context" in line
         for line in app.transcript
     )
 
@@ -987,48 +993,45 @@ async def test_tui_reset_removes_the_stored_key(
     assert any("Stored API key removed" in line for line in app.transcript)
 
 
-def test_render_quota_text_contains_bars_and_percentages() -> None:
-    from gemini_cli.cli.tui.widgets import render_quota_text
+def test_render_context_text_contains_bars_and_percentages() -> None:
+    from gemini_cli.cli.tui.widgets import render_context_text
 
-    rendered = render_quota_text(
-        FakeQuota().get_5h_status(),
-        FakeQuota().get_weekly_status(),
-    )
+    rendered = render_context_text(FakeContext().status(), "gemini-3.8-flash")
 
-    assert "QUOTA" in rendered.plain
-    assert "50.0%" in rendered.plain
-    assert "31.0%" in rendered.plain
-    assert "2h 00m remaining" in rendered.plain
+    assert "CONTEXT" in rendered.plain
+    assert "gemini-3.8-flash" in rendered.plain
+    assert "12.5%" in rendered.plain
+    assert "1.0M tokens" in rendered.plain
     assert "█" in rendered.plain
     assert "░" in rendered.plain
 
 
-def test_render_quota_text_uses_theme_for_empty_bar() -> None:
+def test_render_context_text_uses_theme_for_empty_bar() -> None:
     from gemini_cli.cli.tui.themes import LIGHT_THEME
-    from gemini_cli.cli.tui.widgets import render_quota_text
+    from gemini_cli.cli.tui.widgets import render_context_text
 
-    rendered = render_quota_text(
-        FakeQuota().get_5h_status(),
-        FakeQuota().get_weekly_status(),
+    rendered = render_context_text(
+        FakeContext().status(),
+        "gemini-3.8-flash",
         LIGHT_THEME,
     )
 
     assert LIGHT_THEME.border in {str(span.style) for span in rendered.spans}
 
 
-async def test_tui_quota_panel_toggles_with_slash_and_escape() -> None:
+async def test_tui_context_panel_toggles_with_slash_and_escape() -> None:
     from gemini_cli.cli.tui.app import GeminiApp
-    from gemini_cli.cli.tui.widgets import QuotaPanel
+    from gemini_cli.cli.tui.widgets import ContextPanel
 
     app = GeminiApp(FakeRuntime())
 
     async with app.run_test(size=(120, 40)) as pilot:
-        await pilot.press("slash", "q", "u", "o", "t", "a", "enter")
+        await pilot.press("slash", "c", "o", "n", "t", "e", "x", "t", "enter")
         await app.workers.wait_for_complete()
         await pilot.pause()
-        panel = app.query_one(QuotaPanel)
+        panel = app.query_one(ContextPanel)
         assert panel.display is True
-        assert "QUOTA" in panel.plain
+        assert "CONTEXT" in panel.plain
 
         await pilot.press("escape")
         await pilot.pause()

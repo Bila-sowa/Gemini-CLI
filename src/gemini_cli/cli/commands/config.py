@@ -27,8 +27,6 @@ _INT_FIELDS = frozenset(
         "max_history_turns",
         "max_input_chars",
         "max_output_tokens",
-        "quota_5h_token_limit",
-        "quota_weekly_token_limit",
         "request_timeout_ms",
         "retry_attempts",
         "shell_max_output_bytes",
