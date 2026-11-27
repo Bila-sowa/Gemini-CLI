@@ -118,6 +118,8 @@ def to_textual_theme(theme: Theme) -> TextualTheme:
             "link-background-hover": theme.surface,
             "link-style": "underline",
             "link-style-hover": "bold underline",
+            "activity-muted": theme.muted,
+            "activity-error": theme.error_color,
         },
     )
 

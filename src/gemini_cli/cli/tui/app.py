@@ -39,6 +39,7 @@ from gemini_cli.cli.slash_commands import (
     resolve_command,
     resolve_command_name,
 )
+from gemini_cli.cli.tui.activity import AgentMessageView
 from gemini_cli.cli.tui.clipboard import (
     SELECTION_FALLBACK_FILE_NAME,
     copy_with_feedback,
@@ -71,7 +72,7 @@ from gemini_cli.cli.waiting import WAITING_SHOW_DELAY, ModelWaitTracker
 from gemini_cli.config.env_file import EnvFileError, set_env_value
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEventType
-from gemini_cli.llm import UnknownModelError
+from gemini_cli.llm import ToolCallRequest, UnknownModelError
 from gemini_cli.llm.prompts import PromptError
 from gemini_cli.sandbox.approval import ApprovalDecision
 
@@ -474,11 +475,12 @@ class GeminiApp(App[None]):
         self._stop_requested = False
         prompt.placeholder = STOP_PROMPT_PLACEHOLDER
         conversation = self.query_one("#conversation", VerticalScroll)
-        view = self._new_markdown_message(
+        view = AgentMessageView(
             "✦: ",
             self._theme.assistant_color,
-            streaming=True,
+            theme=self._theme,
         )
+        await conversation.mount(view)
         indicator = WaitingIndicator(self._theme, show_delay=self._waiting_delay)
         tracker = ModelWaitTracker()
         stopped = False
@@ -490,20 +492,30 @@ class GeminiApp(App[None]):
                 # is never interleaved with terminal animation.
                 indicator.hide()
                 if event.event_type is AgentEventType.TEXT_CHUNK:
-                    await view.append(str(event.data))
+                    await view.append_text(str(event.data))
                     self._scroll_to_end()
                 elif event.event_type is AgentEventType.THINKING:
-                    pass
+                    await view.append_thought(str(event.data))
+                    self._scroll_to_end()
                 elif event.event_type is AgentEventType.ERROR:
-                    view.add_error(str(event.data))
+                    await view.add_error(str(event.data))
                     self._scroll_to_end()
                 elif event.event_type is AgentEventType.DONE:
+                    await view.finish()
                     break
 
                 if event.event_type is AgentEventType.TOOL_CALL_START:
+                    call = (
+                        event.data if isinstance(event.data, ToolCallRequest) else None
+                    )
+                    await view.start_tool(call, event.metadata)
+                    self._scroll_to_end()
                     self._model_active = False
                     if not self._stop_requested:
                         prompt.placeholder = TOOLS_PROMPT_PLACEHOLDER
+                elif event.event_type is AgentEventType.TOOL_CALL_END:
+                    view.finish_tool(event.data, event.metadata)
+                    self._scroll_to_end()
 
                 waiting = tracker.on_event(event.event_type)
                 if waiting:
@@ -520,6 +532,8 @@ class GeminiApp(App[None]):
             stopped = True
             raise
         finally:
+            if stopped:
+                view.mark_stopped()
             await view.finish()
             indicator.hide()
             if indicator.is_mounted:
@@ -624,7 +638,15 @@ class GeminiApp(App[None]):
 
     async def _refresh_messages(self) -> None:
         """Re-style existing messages so they follow the active theme."""
+        conversation = self.query_one("#conversation", VerticalScroll)
+        for agent_view in self.query(AgentMessageView):
+            agent_view.apply_theme(self._theme)
+            await agent_view.rerender()
+
         for view in self.query(MarkdownMessageView):
+            # Markdown segments inside an agent turn are handled above.
+            if view.parent is not conversation:
+                continue
             view.apply_theme(self._theme)
             await view.rerender()
 

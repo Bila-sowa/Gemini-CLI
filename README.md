@@ -122,17 +122,17 @@ gemini-cli-py chat
 
 ## Highlights
 
-- Full-screen Textual UI with streaming Markdown, dark/light themes, and a
-  context-window panel.
-- Select text to copy it automatically; press `Esc` to stop a response and keep
-  the partial answer.
-- Model registry with Gemini 4/3.x and Gemma 4 entries, custom models, retries,
-  and fallback.
-- Built-in tools behind one validated registry, with fail-closed approvals and
-  a subprocess or Docker sandbox.
-- Typed settings and project context from `GEMINI.md` and `AGENTS.md`.
-- Slash commands, assistant roles, and persisted model/theme choices.
-- One-shot `run` for scripts and CI, with tests on Python 3.11–3.13.
+- **Interactive TUI.** Full-screen Textual UI with streaming Markdown, themes,
+  a context-window panel, and inline activity for thoughts, tools, and command
+  output. Select text to copy it; press `Esc` to stop a response.
+- **Gemini-first runtime.** Model registry, bounded retries, fallback, custom
+  models, and streaming responses.
+- **One tool system.** Filesystem, shell, web, and code-search tools behind a
+  validated registry, with fail-closed approvals and a subprocess or Docker
+  sandbox.
+- **Project-aware.** Typed settings, `GEMINI.md`/`AGENTS.md` context, assistant
+  roles, slash commands, and persisted model/theme choices.
+- **Scriptable.** The same agent runtime powers `chat` and one-shot `run`.
 
 ## Demo
 

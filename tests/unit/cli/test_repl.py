@@ -439,7 +439,7 @@ async def test_tui_waiting_indicator_tracks_only_model_requests() -> None:
         await pilot.pause()
 
     assert list(app.query(WaitingIndicator)) == []
-    assert any(line == "✦: Hi!" for line in app.transcript)
+    assert any("✦: Hi" in line and "!" in line for line in app.transcript)
 
 
 async def test_tui_escape_stops_an_active_model_request() -> None:

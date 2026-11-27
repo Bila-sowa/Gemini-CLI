@@ -325,10 +325,12 @@ class MarkdownMessageView(Vertical):
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="markdown-message-row"):
-            yield Static(
+            prefix = Static(
                 Text(self._prefix, style=self._prefix_style),
                 classes="message-prefix",
             )
+            prefix.display = bool(self._prefix)
+            yield prefix
             yield GeminiMarkdown(
                 classes="message-markdown",
                 open_links=False,

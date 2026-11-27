@@ -71,6 +71,7 @@ gemini_cli/
 │       │   │   └── config.py
 │       │   └── tui/
 │       │       ├── __init__.py
+│       │       ├── activity.py
 │       │       ├── app.py
 │       │       ├── clipboard.py
 │       │       ├── markdown.py
@@ -178,6 +179,8 @@ The `cli` package is an adapter between users and the application core:
 - `commands/mcp.py` will manage configured MCP servers in Phase 9;
 - `tui/app.py` is the full-screen Textual application: ASCII wordmark, status
   bar, scrollable conversation, prompt, context panel, and role footer;
+- `tui/activity.py` renders inline collapsible activity lines with thoughts,
+  tool calls, web fetches, statuses, and bounded output previews;
 - `tui/markdown.py` renders user and assistant messages with the Textual GFM
   parser, sanitizes control sequences, adds inline `<u>`, and keeps links
   non-clickable;
@@ -210,6 +213,18 @@ blocks carry a `copy` button in their toolbar that copies the block contents
 to the terminal clipboard. Releasing a mouse selection anywhere in the TUI
 also copies the selected text automatically and confirms it with a short
 notification, using the same helper-first clipboard chain.
+
+Thoughts and tool calls are rendered as inline collapsible lines inside the
+assistant message, between the text segments the model streams. Activity text
+is muted so it stays secondary to the answer, with a leading type emoji and a
+status emoji (`⏳`, `✅`, `❌`, `🚫`, `⏹️`). A thought line shows its duration
+(`🧠 thought • 11.3s ✅`); a tool line summarizes the action
+(`🌐 search: https://…`, `📝 create notes.md`, `💻 run: ls -la`). Expanding a
+line shows the thought text, tool arguments, status, duration, and a bounded
+preview of command output. Errors and denied actions use the theme error color
+and a bold title; stopped activity stays muted. Activity is presentation-only:
+it is not added to the session history or sent back to the model. Long output
+is sanitized and truncated, with the number of hidden lines shown.
 
 `run`, the line fallback, and the TUI all show an animated waiting indicator
 while the agent is awaiting a model response. The indicator is driven by the
