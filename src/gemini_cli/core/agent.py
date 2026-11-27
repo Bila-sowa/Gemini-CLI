@@ -3,8 +3,8 @@
 The agent is the only component that turns a user message into a sequence of
 model turns, tool executions, and observations. It depends on small contracts
 — a streaming chat client, the tool registry, the approval manager, the context
-manager, and the quota tracker — so every collaborator can be replaced in
-tests.
+manager, and the context-window tracker — so every collaborator can be replaced
+in tests.
 
 Safety rules enforced here:
 
@@ -18,14 +18,19 @@ Safety rules enforced here:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import AsyncIterator, Sequence
 from typing import Protocol
 
 from gemini_cli.config import Settings
-from gemini_cli.core.context_manager import ContextManager, estimate_tokens
-from gemini_cli.core.quota_tracker import QuotaTracker
+from gemini_cli.core.context_manager import (
+    ContextManager,
+    estimate_messages,
+    estimate_tokens,
+)
+from gemini_cli.core.context_tracker import ContextWindowTracker
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import (
     AgentEvent,
@@ -113,7 +118,7 @@ class Agent:
         tool_registry: ToolRegistry,
         approval_manager: ApprovalManager,
         context_manager: ContextManager,
-        quota_tracker: QuotaTracker,
+        context_tracker: ContextWindowTracker,
         settings: Settings,
         system_prompt: str,
     ) -> None:
@@ -121,9 +126,27 @@ class Agent:
         self._tool_registry = tool_registry
         self._approval_manager = approval_manager
         self._context_manager = context_manager
-        self._quota_tracker = quota_tracker
+        self._context_tracker = context_tracker
         self._settings = settings
         self._system_prompt = system_prompt
+
+    def refresh_context(self, session: Session) -> None:
+        """Recompute context-window occupancy for *session*.
+
+        The tracker holds no persisted state, so startup, model changes, and
+        restored sessions all call this method to rebuild the status from the
+        conversation history.
+        """
+        tools = [
+            ToolDefinition.from_export(entry)
+            for entry in self._tool_registry.export_schemas()
+        ]
+        self._context_tracker.refresh(
+            session.get_history(),
+            context_manager=self._context_manager,
+            system_prompt_tokens=estimate_tokens(self._system_prompt),
+            tool_definitions_tokens=_tool_definition_tokens(tools),
+        )
 
     async def run(
         self,
@@ -153,6 +176,29 @@ class Agent:
             yield error_event(_safe_error(exc))
             yield done_event()
 
+    @staticmethod
+    def _record_interrupted_turn(
+        session: Session,
+        text_parts: Sequence[str],
+        assistant_recorded: bool,
+    ) -> None:
+        """Keep the conversation valid after a user-requested stop.
+
+        A stream that was cancelled before its assistant turn was recorded
+        keeps the text received so far. A turn stopped after tool execution
+        receives a short assistant marker so the history does not end with a
+        tool observation.
+        """
+        if assistant_recorded:
+            last = session.last_message()
+            if last is not None and last.role == "tool":
+                session.add_assistant_message("[generation stopped]")
+            return
+
+        text = "".join(text_parts)
+        if text:
+            session.add_assistant_message(text)
+
     async def _run_turns(self, session: Session) -> AsyncIterator[AgentEvent]:
         tools = [
             ToolDefinition.from_export(entry)
@@ -170,67 +216,79 @@ class Agent:
                 yield done_event()
                 return
 
+            full_history = session.get_history()
             history = self._context_manager.fit_to_window(
-                session.get_history(),
+                full_history,
                 system_prompt_tokens=system_tokens,
                 tool_definitions_tokens=tool_tokens,
+            )
+            self._context_tracker.observe(
+                system_tokens + tool_tokens + estimate_messages(history),
+                trimmed=len(history) < len(full_history),
             )
 
             text_parts: list[str] = []
             calls: list[ToolCallRequest] = []
             usage = UsageInfo()
             failed = False
+            assistant_recorded = False
 
-            async for stream_event in self._llm_client.generate_stream(
-                history,
-                tools or None,
-                self._system_prompt,
-            ):
-                if stream_event.event_type == "usage":
-                    if isinstance(stream_event.data, UsageInfo):
-                        usage = stream_event.data
-                    continue
-                if stream_event.event_type == "done":
-                    continue
+            try:
+                async for stream_event in self._llm_client.generate_stream(
+                    history,
+                    tools or None,
+                    self._system_prompt,
+                ):
+                    if stream_event.event_type == "usage":
+                        if isinstance(stream_event.data, UsageInfo):
+                            usage = stream_event.data
+                        continue
+                    if stream_event.event_type == "done":
+                        continue
 
-                mapped = from_stream_event(stream_event)
-                if mapped is None:
-                    continue
+                    mapped = from_stream_event(stream_event)
+                    if mapped is None:
+                        continue
 
-                if mapped.event_type is AgentEventType.ERROR:
-                    failed = True
+                    if mapped.event_type is AgentEventType.ERROR:
+                        failed = True
+                        yield mapped
+                        continue
+
+                    if mapped.event_type is AgentEventType.TOOL_CALL_START:
+                        if isinstance(mapped.data, ToolCallRequest):
+                            calls.append(mapped.data)
+                    elif mapped.event_type is AgentEventType.TEXT_CHUNK:
+                        text_parts.append(str(mapped.data))
+
                     yield mapped
-                    continue
 
-                if mapped.event_type is AgentEventType.TOOL_CALL_START:
-                    if isinstance(mapped.data, ToolCallRequest):
-                        calls.append(mapped.data)
-                elif mapped.event_type is AgentEventType.TEXT_CHUNK:
-                    text_parts.append(str(mapped.data))
+                if failed:
+                    yield done_event()
+                    return
 
-                yield mapped
+                session.add_assistant_message("".join(text_parts), tuple(calls))
+                assistant_recorded = True
+                session.update_usage(usage)
+                session.record_iteration()
 
-            if failed:
-                yield done_event()
-                return
+                if not calls:
+                    # Include the completed answer in the status shown after the
+                    # turn; the next request would report it one turn late.
+                    self.refresh_context(session)
+                    yield done_event()
+                    return
 
-            session.add_assistant_message("".join(text_parts), tuple(calls))
-            session.update_usage(usage)
-            if usage.input_tokens or usage.output_tokens:
-                self._quota_tracker.record_usage(
-                    self._settings.model,
-                    usage.input_tokens,
-                    usage.output_tokens,
+                for call in calls:
+                    async for event in self._handle_tool_call(session, call):
+                        yield event
+            except asyncio.CancelledError:
+                self._record_interrupted_turn(
+                    session,
+                    text_parts,
+                    assistant_recorded,
                 )
-            session.record_iteration()
-
-            if not calls:
-                yield done_event()
-                return
-
-            for call in calls:
-                async for event in self._handle_tool_call(session, call):
-                    yield event
+                raise
 
     async def _handle_tool_call(
         self,

@@ -64,10 +64,14 @@ def make_text_chunk(
 def make_function_call_chunk(
     call: types.FunctionCall,
     *,
+    thought_signature: bytes | None = None,
     usage: types.GenerateContentResponseUsageMetadata | None = None,
 ) -> types.GenerateContentResponse:
     """Build a streamed function-call chunk."""
-    part = types.Part(function_call=call)
+    part = types.Part(
+        function_call=call,
+        thought_signature=thought_signature,
+    )
     return types.GenerateContentResponse(
         candidates=[types.Candidate(content=types.Content(role="model", parts=[part]))],
         usage_metadata=usage,
@@ -78,14 +82,26 @@ def make_response(
     *,
     text: str | None = None,
     function_calls: Iterable[types.FunctionCall] = (),
+    thought_signatures: Sequence[bytes | None] | None = None,
     usage: types.GenerateContentResponseUsageMetadata | None = None,
     finish_reason: types.FinishReason | None = types.FinishReason.STOP,
 ) -> types.GenerateContentResponse:
-    """Build a complete (non-streaming) model response."""
+    """Build a complete (non-streaming) model response.
+
+    ``thought_signatures`` is aligned with ``function_calls``; omitted entries
+    stay unsigned, as Gemini leaves parallel sibling calls unsigned.
+    """
+    calls = list(function_calls)
+    signatures: Sequence[bytes | None] = (
+        thought_signatures if thought_signatures is not None else [None] * len(calls)
+    )
     parts: list[types.Part] = []
     if text:
         parts.append(types.Part(text=text))
-    parts.extend(types.Part(function_call=call) for call in function_calls)
+    parts.extend(
+        types.Part(function_call=call, thought_signature=signature)
+        for call, signature in zip(calls, signatures, strict=True)
+    )
 
     return types.GenerateContentResponse(
         candidates=[
@@ -104,10 +120,18 @@ class FakeModels:
     def __init__(self) -> None:
         self.generate_calls: list[dict[str, Any]] = []
         self.stream_calls: list[dict[str, Any]] = []
+        self.list_calls: list[dict[str, Any]] = []
         self.generate_responses: list[types.GenerateContentResponse] = []
         self.generate_errors: list[Exception] = []
         self.chunks: list[types.GenerateContentResponse] = []
         self.stream_error: Exception | None = None
+        self.list_error: Exception | None = None
+
+    async def list(self, **kwargs: Any) -> Any:
+        self.list_calls.append(kwargs)
+        if self.list_error is not None:
+            raise self.list_error
+        return SimpleNamespace(page=[])
 
     async def generate_content(self, **kwargs: Any) -> types.GenerateContentResponse:
         self.generate_calls.append(kwargs)

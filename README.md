@@ -7,27 +7,19 @@
 
   <p>
     <a href="#about">About</a> ·
+    <a href="#quick-start">Quick Start</a> ·
+    <a href="#highlights">Highlights</a> ·
     <a href="#demo">Demo</a> ·
-    <a href="#features">Features</a> ·
     <a href="./documentation/architecture.md">Architecture</a> ·
     <a href="#license">License</a>
   </p>
 </div>
 
 > [!NOTE]
-> **Project status:** Phases 0–7 are complete: project foundation,
-> configuration and project context, API-key authentication with OS keyring
-> storage, structured logging with opt-in telemetry, the Gemini client (model
-> registry, retry, fallback, prompt templates, and streaming), the tool system
-> with filesystem, web, code, and shell tools, and the sandbox with a
-> fail-closed approval manager. Phase 7 adds the agent core: conversation
-> sessions, context-window trimming, local quota accounting, a stable event
-> stream, and the streaming think-act-observe loop that executes approved tools
-> and records observations. The interactive CLI and MCP integration are not
-> implemented yet. The package installs, `gemini-cli-py --version` works, and CI
-> runs lint, type checks, and the test suite on Python 3.11–3.13. The
-> screenshots below are interface concepts, and the feature list describes the
-> intended product scope. The package has not been published to PyPI yet.
+> **Project status:** The core agent runtime and terminal UI are implemented
+> (phases 0–8). MCP and RAG are planned, and the package is not yet published
+> on PyPI. The screenshots below are interface concepts; visuals and commands
+> may change as implementation progresses.
 
 ## About
 
@@ -87,6 +79,61 @@ The intended distinction is the combination of product focus and architecture:
   agent loop, model adapter, tools, security layer, and UI can be understood
   and tested independently.
 
+## Quick Start
+
+Requires Python 3.11+.
+
+For local work:
+
+```bash
+uv sync --all-extras
+uv run gemini-cli-py login
+uv run gemini-cli-py chat
+```
+
+For a single non-interactive request:
+
+```bash
+uv run gemini-cli-py run "Summarize this repository"
+```
+
+Copy `.env.example` to `.env` for local configuration, and
+`GEMINI.md.example` to `GEMINI.md` for project-specific instructions.
+
+### Without uv
+
+After the package is published on PyPI:
+
+```bash
+pipx install gemini-cli-py
+gemini-cli-py chat
+```
+
+From a local checkout:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install .
+gemini-cli-py chat
+```
+
+`python -m gemini_cli chat` also works once the package is installed.
+
+## Highlights
+
+- **Interactive TUI.** Full-screen Textual UI with streaming Markdown, themes,
+  a context-window panel, and inline activity for thoughts, tools, and command
+  output. Select text to copy it; press `Esc` to stop a response.
+- **Gemini-first runtime.** Model registry, bounded retries, fallback, custom
+  models, and streaming responses.
+- **One tool system.** Filesystem, shell, web, and code-search tools behind a
+  validated registry, with fail-closed approvals and a subprocess or Docker
+  sandbox.
+- **Project-aware.** Typed settings, `GEMINI.md`/`AGENTS.md` context, assistant
+  roles, slash commands, and persisted model/theme choices.
+- **Scriptable.** The same agent runtime powers `chat` and one-shot `run`.
+
 ## Demo
 
 The following early interface mockups illustrate the intended terminal
@@ -99,7 +146,7 @@ experience. Visuals and commands may change as implementation progresses.
 <table>
   <tr>
     <td width="50%" align="center">
-      <strong>Quota overview</strong>
+      <strong>Context overview</strong>
     </td>
     <td width="50%" align="center">
       <strong>Model selection</strong>
@@ -107,7 +154,7 @@ experience. Visuals and commands may change as implementation progresses.
   </tr>
   <tr>
     <td>
-      <img src="./documentation/ui/model/Terminal-3.png" alt="Gemini CLI quota overview">
+      <img src="./documentation/ui/model/Terminal-3.png" alt="Gemini CLI context overview">
     </td>
     <td>
       <img src="./documentation/ui/model/Terminal-4.png" alt="Gemini CLI model selection">
@@ -131,141 +178,30 @@ experience. Visuals and commands may change as implementation progresses.
   </tr>
 </table>
 
-## Features
-
-The capabilities below form the planned product scope. They are documented
-design goals and should not yet be interpreted as released functionality.
-
-### Terminal experience
-
-- Interactive REPL with streaming model responses.
-- One-shot, non-interactive execution for scripts and CI workflows.
-- Rich or Textual-based terminal UI with themes and keyboard navigation.
-- Visible version, active model, role, and quota information.
-- Command completion for actions such as configuration, role switching, and
-  credential reset.
-- Focused assistant roles for general tasks, coding, creative work, deep
-  analysis, and expressive writing.
-- Clear progress, structured errors, and recoverable tool failures.
-
-### Agent runtime
-
-- A model-independent think-act-observe loop.
-- Conversation sessions that retain messages, tool calls, observations, and
-  runtime metadata.
-- Streaming events shared by interactive and non-interactive clients.
-- Context-window management through safe trimming or summarization.
-- Limits on agent iterations, retry attempts, output size, and token usage.
-- Structured validation of model-generated tool names and arguments before
-  execution.
-
-### Gemini integration
-
-- A dedicated client around the `google-genai` SDK.
-- Selectable Gemini models for different speed, quality, and reasoning needs.
-- Policy-controlled fallback between model tiers when appropriate.
-- Bounded exponential backoff for transient errors and rate limits.
-- Version-controlled system prompts and reusable Jinja templates.
-- Separation of trusted instructions from user and tool content.
-
-### Filesystem
-
-- Read text files from approved project locations.
-- Create or overwrite files after validation and, when required, approval.
-- Apply focused edits without replacing unrelated content.
-- Find files with glob-style search.
-- Search source code and text with grep-style queries.
-- Restrict operations to approved roots and reject path traversal attempts.
-- Return structured results and errors to the agent loop.
-
-### Shell execution and sandboxing
-
-- Run shell commands through a sandbox abstraction rather than directly from
-  the agent.
-- Choose between a Docker backend and a constrained local subprocess backend.
-- Apply timeouts, resource limits, working-directory controls, and output
-  limits.
-- Ask for explicit confirmation before destructive or high-impact actions.
-- Report denied, timed-out, and resource-limited operations as recoverable
-  tool results.
-
-### Web and grounding
-
-- Fetch remote resources for task-relevant context.
-- Use grounded Google Search for current information.
-- Validate URLs and responses before exposing them to the agent.
-- Keep remote content separate from trusted system instructions.
-- Preserve source information so answers can be traced back to their inputs.
-
-### MCP
-
-- Add, list, and remove Model Context Protocol server configurations.
-- Connect to MCP servers over stdio and SSE transports.
-- Discover external tools and register them alongside built-in tools.
-- Validate server declarations, tool schemas, and arguments.
-- Apply the same approval, timeout, sandbox, and result-handling policies to
-  MCP tools as to local tools.
-- Prevent naming conflicts through centralized tool resolution.
-
-### RAG
-
-Retrieval-augmented generation is planned as a future extension and does not
-yet have a dedicated package in the current architecture. Its intended goals
-are:
-
-- search project files and user-provided knowledge before answering;
-- retrieve only the most relevant passages for the current task;
-- preserve source metadata and provide citations where possible;
-- validate retrieval relevance before adding content to the model context;
-- isolate knowledge by project and respect filesystem access boundaries;
-- keep indexing and retrieval replaceable so the project is not tied to a
-  single storage provider.
-
-### Authentication and credentials
-
-- Authenticate with Google OAuth or a Gemini API key.
-- Store persistent tokens in the operating system keyring where available.
-- Keep secrets out of source-controlled configuration, prompts, logs, and
-  telemetry.
-- Support login, logout, reset, and authentication-status workflows from the
-  CLI.
-
-### Configuration and project context
-
-- Typed configuration validated with Pydantic Settings.
-- Predictable precedence: environment variables, project configuration,
-  global configuration, then built-in defaults.
-- CLI commands for inspecting and changing supported settings.
-- Project-specific guidance loaded from files such as `GEMINI.md` and
-  `AGENTS.md`.
-- One validated settings object shared with lower-level components.
-
-### Reliability, privacy, and observability
-
-- Structured logging with secret and personal-data redaction.
-- Optional telemetry that can be explicitly disabled.
-- Operational metadata for model latency, token usage, retries, and tool
-  duration without collecting raw sensitive content by default.
-- Testable interfaces for the LLM client, tool registry, sandbox, and MCP
-  adapters.
-- Deterministic mock responses for unit and integration testing without paid
-  API calls.
-
-## Planned Stack
+## Stack
 
 | Area                    | Technology                              |
 | ----------------------- | --------------------------------------- |
 | Runtime                 | Python 3.11+                            |
 | Model API               | Gemini through `google-genai`           |
-| CLI                     | Typer or Click                          |
-| Terminal UI             | Rich or Textual                         |
+| CLI                     | Typer                                   |
+| Terminal UI             | Textual                                 |
 | Validation and settings | Pydantic and Pydantic Settings          |
 | Prompt templates        | Jinja                                   |
-| Tool interoperability   | MCP over stdio and SSE                  |
+| Tool interoperability   | MCP over stdio and SSE (planned)        |
 | Isolation               | Docker or a resource-limited subprocess |
 | Credential storage      | Operating system keyring                |
 | Packaging               | `pyproject.toml` and `uv`               |
-| Testing and quality     | pytest, Ruff, and a static type checker |
+| Testing and quality     | pytest, Ruff, and mypy                  |
+
+## Documentation
+
+- [Architecture](./documentation/architecture.md) — package layout, runtime
+  flows, and design decisions.
+- [Development](./documentation/development.md) — setup, quality gates, and CI.
+- [Tools and sandbox](./documentation/tools.md) — tool contract and built-in
+  tool behavior.
+- [Implementation plan](./documentation/plan.md) — historical phase plan.
 
 ## License
 

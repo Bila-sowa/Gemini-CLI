@@ -16,20 +16,20 @@ from pydantic_settings import (
 
 from gemini_cli.config.defaults import (
     AVAILABLE_ROLES,
+    AVAILABLE_THEMES,
     DEFAULT_MAX_AGENT_ITERATIONS,
     DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_HISTORY_TURNS,
     DEFAULT_MAX_INPUT_CHARS,
     DEFAULT_MAX_OUTPUT_TOKENS,
     DEFAULT_MODEL,
-    DEFAULT_QUOTA_5H_TOKEN_LIMIT,
-    DEFAULT_QUOTA_WEEKLY_TOKEN_LIMIT,
     DEFAULT_REQUEST_TIMEOUT_MS,
     DEFAULT_RETRY_ATTEMPTS,
     DEFAULT_ROLE,
     DEFAULT_SHELL_MAX_OUTPUT_BYTES,
     DEFAULT_SHELL_TIMEOUT_SECONDS,
     DEFAULT_TELEMETRY_ENABLED,
+    DEFAULT_THEME_NAME,
     GLOBAL_CONFIG_DIR_NAME,
     GLOBAL_CONFIG_FILE_NAME,
     PROJECT_CONFIG_FILE_NAME,
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
 
     The project-level file may not set ``api_key`` or ``allowed_roots``;
     see :data:`PROJECT_CONFIG_BLOCKED_FIELDS`. TOML files use field names,
-    for example ``model = "gemini-2.5-pro"``.
+    for example ``model = "gemini-3.8-flash"``.
     """
 
     model_config = SettingsConfigDict(
@@ -108,13 +108,6 @@ class Settings(BaseSettings):
     max_agent_iterations: int = Field(default=DEFAULT_MAX_AGENT_ITERATIONS, ge=1)
     max_output_tokens: int = Field(default=DEFAULT_MAX_OUTPUT_TOKENS, ge=1)
 
-    # --- Quota ---
-    quota_5h_token_limit: int = Field(default=DEFAULT_QUOTA_5H_TOKEN_LIMIT, gt=0)
-    quota_weekly_token_limit: int = Field(
-        default=DEFAULT_QUOTA_WEEKLY_TOKEN_LIMIT,
-        gt=0,
-    )
-
     # --- Filesystem ---
     allowed_roots: list[Path] = Field(default_factory=list)
     max_file_size_bytes: int = Field(default=DEFAULT_MAX_FILE_SIZE_BYTES, gt=0)
@@ -125,6 +118,9 @@ class Settings(BaseSettings):
 
     # --- Role ---
     role: str = Field(default=DEFAULT_ROLE)
+
+    # --- Terminal theme ---
+    theme: str = Field(default=DEFAULT_THEME_NAME)
 
     # --- Telemetry ---
     telemetry_enabled: bool = Field(default=DEFAULT_TELEMETRY_ENABLED)
@@ -137,6 +133,19 @@ class Settings(BaseSettings):
         if normalized not in AVAILABLE_ROLES:
             msg = (
                 f"Unknown role '{normalized}'. Available: {', '.join(AVAILABLE_ROLES)}"
+            )
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("theme")
+    @classmethod
+    def validate_theme(cls, value: str) -> str:
+        """Normalize the theme name and reject unknown values."""
+        normalized = value.strip().lower()
+        if normalized not in AVAILABLE_THEMES:
+            msg = (
+                f"Unknown theme '{normalized}'. "
+                f"Available: {', '.join(AVAILABLE_THEMES)}"
             )
             raise ValueError(msg)
         return normalized

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import inspect
 import json
 import logging
@@ -41,6 +42,7 @@ from tests.fixtures.fake_gemini import (
 )
 
 TEST_KEY = "test-api-key"
+SIGNATURE = b"opaque-thought-signature"
 
 
 class FakeApiError(Exception):
@@ -99,7 +101,7 @@ def telemetry_logs(tmp_path) -> Iterator[Any]:
 async def test_client_can_be_instantiated_with_a_dummy_key(settings: Settings) -> None:
     gemini = GeminiClient(settings, api_key="dummy-key")
 
-    assert gemini.model == "gemini-2.5-flash"
+    assert gemini.model == "gemini-3.8-flash"
     assert gemini._client is None
     assert "dummy-key" not in repr(gemini)
 
@@ -137,7 +139,7 @@ async def test_generate_maps_request_and_response(
     )
 
     call = fake_sdk.models.generate_calls[0]
-    assert call["model"] == "gemini-2.5-flash"
+    assert call["model"] == "gemini-3.8-flash"
     assert call["contents"][0].role == "user"
     assert call["contents"][0].parts[0].text == "Hi"
     assert call["config"].system_instruction == "Be helpful."
@@ -148,7 +150,7 @@ async def test_generate_maps_request_and_response(
 
     assert response.content == "Hello!"
     assert response.tool_calls == []
-    assert response.model == "gemini-2.5-flash"
+    assert response.model == "gemini-3.8-flash"
     assert response.finish_reason == "STOP"
     assert response.usage == UsageInfo(
         input_tokens=12,
@@ -221,6 +223,107 @@ async def test_generate_maps_tool_calls_in_response(
     ]
 
 
+async def test_generate_captures_thought_signature(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    fake_sdk.models.generate_responses = [
+        make_response(
+            function_calls=[
+                make_function_call("read_file", {"path": "a.txt"}, call_id="call-7")
+            ],
+            thought_signatures=[SIGNATURE],
+        )
+    ]
+
+    response = await client.generate([Message(role="user", content="Read it")])
+
+    call = response.tool_calls[0]
+    assert call.thought_signature == SIGNATURE
+    # Opaque provider state must not leak into logs through repr().
+    assert "opaque" not in repr(call)
+
+
+async def test_generate_replays_thought_signature(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    fake_sdk.models.generate_responses = [make_response(text="done")]
+    call = ToolCallRequest(
+        id="call-1",
+        name="read_file",
+        arguments={"path": "a.txt"},
+        thought_signature=SIGNATURE,
+    )
+    messages = [
+        Message(role="user", content="Read a.txt"),
+        Message(role="assistant", content="", tool_calls=(call,)),
+        Message(
+            role="tool",
+            content="file body",
+            tool_call_id="call-1",
+            name="read_file",
+        ),
+    ]
+
+    await client.generate(messages)
+
+    contents = fake_sdk.models.generate_calls[0]["contents"]
+    part = contents[1].parts[0]
+    assert part.function_call.id == "call-1"
+    assert part.thought_signature == SIGNATURE
+
+    wire = contents[1].model_dump(mode="json", by_alias=True, exclude_none=True)
+    assert wire["parts"][0]["thoughtSignature"] == base64.b64encode(SIGNATURE).decode()
+
+
+async def test_generate_groups_parallel_tool_responses(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    fake_sdk.models.generate_responses = [make_response(text="done")]
+    signed = ToolCallRequest(
+        id="call-1",
+        name="read_file",
+        arguments={"path": "a.txt"},
+        thought_signature=SIGNATURE,
+    )
+    unsigned = ToolCallRequest(
+        id="call-2",
+        name="grep",
+        arguments={"query": "needle"},
+    )
+    messages = [
+        Message(role="user", content="Inspect"),
+        Message(role="assistant", content="", tool_calls=(signed, unsigned)),
+        Message(
+            role="tool",
+            content="body",
+            tool_call_id="call-1",
+            name="read_file",
+        ),
+        Message(
+            role="tool",
+            content="match",
+            tool_call_id="call-2",
+            name="grep",
+        ),
+    ]
+
+    await client.generate(messages)
+
+    contents = fake_sdk.models.generate_calls[0]["contents"]
+    assert [content.role for content in contents] == ["user", "model", "user"]
+
+    calls = contents[1].parts
+    assert [part.function_call.id for part in calls] == ["call-1", "call-2"]
+    assert calls[0].thought_signature == SIGNATURE
+    assert calls[1].thought_signature is None
+
+    responses = contents[2].parts
+    assert [part.function_response.id for part in responses] == ["call-1", "call-2"]
+
+
 async def test_generate_retries_transient_errors(
     client: GeminiClient,
     fake_sdk: FakeSdkClient,
@@ -235,13 +338,15 @@ async def test_generate_retries_transient_errors(
 
 
 async def test_generate_stops_after_max_attempts(
-    client: GeminiClient,
+    settings: Settings,
     fake_sdk: FakeSdkClient,
 ) -> None:
+    no_fallback = Settings(_env_file=None, model="gemini-3.1-flash-lite")
+    gemini = GeminiClient(no_fallback, api_key=TEST_KEY)
     fake_sdk.models.generate_errors = [FakeApiError(503) for _ in range(3)]
 
     with pytest.raises(LLMError) as excinfo:
-        await client.generate([Message(role="user", content="Hi")])
+        await gemini.generate([Message(role="user", content="Hi")])
 
     assert len(fake_sdk.models.generate_calls) == 3
     assert excinfo.value.status == 503
@@ -264,11 +369,11 @@ async def test_fallback_model_is_used_after_server_errors(
         "gemini-2.5-pro",
         "gemini-2.5-pro",
         "gemini-2.5-pro",
-        "gemini-2.5-flash",
+        "gemini-3.8-flash",
     ]
-    assert response.model == "gemini-2.5-flash"
+    assert response.model == "gemini-3.8-flash"
     assert response.content == "from fallback"
-    assert settings.model == "gemini-2.5-flash"
+    assert settings.model == "gemini-3.8-flash"
 
 
 async def test_client_errors_are_not_retried_or_fallbacked(
@@ -286,23 +391,58 @@ async def test_client_errors_are_not_retried_or_fallbacked(
     assert len(fake_sdk.models.generate_calls) == 1
 
 
-async def test_flash_has_no_fallback(
-    client: GeminiClient,
+async def test_model_without_fallback_does_not_switch(
+    settings: Settings,
     fake_sdk: FakeSdkClient,
 ) -> None:
+    no_fallback = Settings(_env_file=None, model="gemini-3.1-flash-lite")
+    gemini = GeminiClient(no_fallback, api_key=TEST_KEY)
     fake_sdk.models.generate_errors = [FakeApiError(503) for _ in range(3)]
 
     with pytest.raises(LLMError):
-        await client.generate([Message(role="user", content="Hi")])
+        await gemini.generate([Message(role="user", content="Hi")])
 
     assert len(fake_sdk.models.generate_calls) == 3
+
+
+async def test_generate_accepts_custom_model(
+    settings: Settings,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    custom = Settings(_env_file=None, model="my-custom-model")
+    gemini = GeminiClient(custom, api_key=TEST_KEY)
+    fake_sdk.models.generate_responses = [make_response(text="hello")]
+
+    response = await gemini.generate([Message(role="user", content="Hi")])
+
+    assert fake_sdk.models.generate_calls[0]["model"] == "my-custom-model"
+    assert response.model == "my-custom-model"
+    assert response.content == "hello"
+
+
+async def test_custom_model_has_no_fallback(
+    settings: Settings,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    custom = Settings(_env_file=None, model="my-custom-model", retry_attempts=1)
+    gemini = GeminiClient(custom, api_key=TEST_KEY)
+    fake_sdk.models.generate_errors = [FakeApiError(503)]
+
+    with pytest.raises(LLMError):
+        await gemini.generate([Message(role="user", content="Hi")])
+
+    assert len(fake_sdk.models.generate_calls) == 1
 
 
 async def test_zero_retry_attempts_means_a_single_attempt(
     settings: Settings,
     fake_sdk: FakeSdkClient,
 ) -> None:
-    no_retry_settings = Settings(_env_file=None, retry_attempts=0)
+    no_retry_settings = Settings(
+        _env_file=None,
+        model="gemini-3.1-flash-lite",
+        retry_attempts=0,
+    )
     gemini = GeminiClient(no_retry_settings, api_key=TEST_KEY)
     fake_sdk.models.generate_errors = [FakeApiError(500)]
 
@@ -347,7 +487,29 @@ async def test_generate_stream_yields_text_then_done(
     ]
     assert "".join(str(event.data) for event in events[:2]) == "Hello"
     assert events[2].data.input_tokens == 9
-    assert events[3].data == "gemini-2.5-flash"
+    assert events[3].data == "gemini-3.8-flash"
+
+
+async def test_generate_stream_accepts_custom_model(
+    settings: Settings,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    custom = Settings(_env_file=None, model="my-custom-model")
+    gemini = GeminiClient(custom, api_key=TEST_KEY)
+    fake_sdk.models.chunks = [make_text_chunk("hello")]
+
+    events = [
+        event
+        async for event in gemini.generate_stream([Message(role="user", content="Hi")])
+    ]
+
+    assert fake_sdk.models.stream_calls[0]["model"] == "my-custom-model"
+    assert [event.event_type for event in events] == [
+        "text_delta",
+        "usage",
+        "done",
+    ]
+    assert events[-1].data == "my-custom-model"
 
 
 async def test_generate_stream_marks_thought_parts(
@@ -403,6 +565,55 @@ async def test_generate_stream_buffers_split_tool_calls(
     )
 
 
+async def test_generate_stream_keeps_thought_signature_across_chunks(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    first = make_function_call(
+        "read_file", {"path": "a.txt"}, call_id="call-1", will_continue=True
+    )
+    second = make_function_call(
+        "read_file",
+        partial_args=[types.PartialArg(json_path="$.start_line", number_value=3.0)],
+        will_continue=False,
+    )
+    fake_sdk.models.chunks = [
+        make_function_call_chunk(first, thought_signature=SIGNATURE),
+        make_function_call_chunk(second),
+    ]
+
+    events = [
+        event
+        async for event in client.generate_stream([Message(role="user", content="Hi")])
+    ]
+
+    tool_events = [event for event in events if event.event_type == "tool_call_delta"]
+    assert len(tool_events) == 1
+    assert tool_events[0].data.thought_signature == SIGNATURE
+    assert tool_events[0].data.arguments == {"path": "a.txt", "start_line": 3.0}
+
+
+async def test_generate_stream_keeps_parallel_signatures_as_received(
+    client: GeminiClient,
+    fake_sdk: FakeSdkClient,
+) -> None:
+    signed = make_function_call("read_file", {"path": "a.txt"}, call_id="call-1")
+    unsigned = make_function_call("grep", {"query": "needle"}, call_id="call-2")
+    fake_sdk.models.chunks = [
+        make_function_call_chunk(signed, thought_signature=SIGNATURE),
+        make_function_call_chunk(unsigned),
+    ]
+
+    events = [
+        event
+        async for event in client.generate_stream([Message(role="user", content="Hi")])
+    ]
+
+    calls = [event.data for event in events if event.event_type == "tool_call_delta"]
+    assert [call.id for call in calls] == ["call-1", "call-2"]
+    assert [call.thought_signature for call in calls] == [SIGNATURE, None]
+
+
 async def test_generate_stream_flushes_unfinished_tool_call(
     client: GeminiClient,
     fake_sdk: FakeSdkClient,
@@ -410,7 +621,9 @@ async def test_generate_stream_flushes_unfinished_tool_call(
     pending = make_function_call(
         "grep", {"query": "needle"}, call_id="call-2", will_continue=True
     )
-    fake_sdk.models.chunks = [make_function_call_chunk(pending)]
+    fake_sdk.models.chunks = [
+        make_function_call_chunk(pending, thought_signature=SIGNATURE)
+    ]
 
     events = [
         event
@@ -420,6 +633,7 @@ async def test_generate_stream_flushes_unfinished_tool_call(
     tool_events = [event for event in events if event.event_type == "tool_call_delta"]
     assert len(tool_events) == 1
     assert tool_events[0].data.arguments == {"query": "needle"}
+    assert tool_events[0].data.thought_signature == SIGNATURE
 
 
 async def test_generate_stream_reports_errors(
@@ -473,7 +687,7 @@ async def test_telemetry_records_metadata_without_secrets(
     records = (telemetry_logs / "telemetry.jsonl").read_text(encoding="utf-8")
     payload = json.loads(records.splitlines()[0])["event"]
 
-    assert payload["model"] == "gemini-2.5-flash"
+    assert payload["model"] == "gemini-3.8-flash"
     assert payload["status"] == "error"
     assert payload["retry_count"] == 0
     assert api_key not in records
@@ -547,3 +761,26 @@ def test_partial_args_support_array_indexes() -> None:
 
     assert completed is not None
     assert completed.arguments == {"edits": [None, {"text": "x"}]}
+
+
+async def test_verify_lists_a_model(settings, fake_sdk) -> None:
+    client = GeminiClient(settings, api_key=TEST_KEY)
+    try:
+        await client.verify()
+    finally:
+        client.close()
+
+    assert fake_sdk.models.list_calls
+    assert fake_sdk.models.list_calls[0]["config"] == {"page_size": 1}
+
+
+async def test_verify_maps_api_errors(settings, fake_sdk) -> None:
+    fake_sdk.models.list_error = FakeApiError(401)
+    client = GeminiClient(settings, api_key=TEST_KEY)
+    try:
+        with pytest.raises(LLMError) as excinfo:
+            await client.verify()
+    finally:
+        client.close()
+
+    assert excinfo.value.status == 401

@@ -24,7 +24,7 @@ from gemini_cli.llm.models import (
     ToolDefinition,
     UnknownModelError,
     get_fallback,
-    get_model,
+    resolve_model,
 )
 from gemini_cli.llm.retry import RetryPolicy, status_code, with_retry
 from gemini_cli.telemetry import ModelCallEvent, emit_model_call
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 MessageRole = Literal["user", "assistant", "tool"]
 StreamEventType = Literal["text_delta", "tool_call_delta", "usage", "done", "error"]
-CallStatus = Literal["success", "error", "timeout", "rate_limited"]
+CallStatus = Literal["success", "error", "timeout", "rate_limited", "cancelled"]
 
 MAX_ERROR_DETAIL_CHARS = 300
 _FALLBACK_STATUS_CODES = frozenset({404, 429, 500, 503})
@@ -42,11 +42,18 @@ _PARTIAL_SEGMENT = re.compile(r"^([^\[\]]+)(?:\[(\d+)\])?$")
 
 @dataclass(frozen=True)
 class ToolCallRequest:
-    """A complete function call requested by the model."""
+    """A complete function call requested by the model.
+
+    ``thought_signature`` is opaque Gemini reasoning state attached to the
+    function-call part. Gemini 3 models reject a replayed tool turn without it,
+    so it travels with the call and is sent back unchanged on the next request.
+    It is excluded from ``repr`` to keep provider state out of logs.
+    """
 
     id: str
     name: str
     arguments: dict[str, Any]
+    thought_signature: bytes | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -209,11 +216,16 @@ def _arguments_from_call(call: types.FunctionCall) -> dict[str, Any]:
     return arguments
 
 
-def _tool_call_from_call(call: types.FunctionCall, index: int) -> ToolCallRequest:
+def _tool_call_from_call(
+    call: types.FunctionCall,
+    index: int,
+    thought_signature: bytes | None = None,
+) -> ToolCallRequest:
     return ToolCallRequest(
         id=call.id or f"call_{index}",
         name=call.name or "",
         arguments=_arguments_from_call(call),
+        thought_signature=thought_signature,
     )
 
 
@@ -224,6 +236,7 @@ class _PendingCall:
     name: str
     call_id: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    thought_signature: bytes | None = None
 
 
 class ToolCallAccumulator:
@@ -231,14 +244,20 @@ class ToolCallAccumulator:
 
     Gemini can split one call across chunks. Only fully assembled calls are
     emitted, so a partial or malformed argument object never reaches tool
-    dispatch.
+    dispatch. A thought signature normally arrives with the first chunk; it is
+    kept until the call completes so the replay can reproduce it.
     """
 
     def __init__(self) -> None:
         self._pending: _PendingCall | None = None
         self._counter = 0
 
-    def feed(self, call: types.FunctionCall) -> ToolCallRequest | None:
+    def feed(
+        self,
+        call: types.FunctionCall,
+        *,
+        thought_signature: bytes | None = None,
+    ) -> ToolCallRequest | None:
         """Add a streamed function-call part; return a call when it is complete."""
         name = call.name or ""
         if self._pending is None or (name and self._pending.name != name):
@@ -246,7 +265,10 @@ class ToolCallAccumulator:
             self._pending = _PendingCall(
                 name=name,
                 call_id=call.id or f"call_{self._counter}",
+                thought_signature=thought_signature,
             )
+        elif thought_signature is not None:
+            self._pending.thought_signature = thought_signature
 
         self._pending.arguments.update(_arguments_from_call(call))
 
@@ -259,6 +281,7 @@ class ToolCallAccumulator:
             id=completed.call_id,
             name=completed.name,
             arguments=dict(completed.arguments),
+            thought_signature=completed.thought_signature,
         )
 
     def flush(self) -> ToolCallRequest | None:
@@ -271,6 +294,7 @@ class ToolCallAccumulator:
             id=completed.call_id,
             name=completed.name,
             arguments=dict(completed.arguments),
+            thought_signature=completed.thought_signature,
         )
 
 
@@ -291,12 +315,27 @@ def _usage_from(
     )
 
 
+def _append_content(contents: list[types.Content], content: types.Content) -> None:
+    """Append *content*, merging it into a directly preceding same-role turn.
+
+    Gemini requires user and model turns to alternate. Parallel tool results
+    arrive as consecutive ``role="tool"`` messages, so each one maps to a user
+    content; merging them keeps a single user turn in front of the next model
+    request.
+    """
+    if contents and contents[-1].role == content.role:
+        contents[-1].parts = [*(contents[-1].parts or []), *(content.parts or [])]
+        return
+    contents.append(content)
+
+
 def _contents_from(messages: Sequence[Message]) -> list[types.Content]:
     contents: list[types.Content] = []
     for message in messages:
         if message.role == "user":
-            contents.append(
-                types.Content(role="user", parts=[types.Part(text=message.content)])
+            _append_content(
+                contents,
+                types.Content(role="user", parts=[types.Part(text=message.content)]),
             )
         elif message.role == "assistant":
             parts: list[types.Part] = []
@@ -308,18 +347,20 @@ def _contents_from(messages: Sequence[Message]) -> list[types.Content]:
                         id=call.id,
                         name=call.name,
                         args=dict(call.arguments),
-                    )
+                    ),
+                    thought_signature=call.thought_signature,
                 )
                 for call in message.tool_calls
             )
             if not parts:
                 parts.append(types.Part(text=""))
-            contents.append(types.Content(role="model", parts=parts))
+            _append_content(contents, types.Content(role="model", parts=parts))
         else:
             if not message.name:
                 msg = "Tool messages require the tool 'name'."
                 raise ValueError(msg)
-            contents.append(
+            _append_content(
+                contents,
                 types.Content(
                     role="user",
                     parts=[
@@ -331,7 +372,7 @@ def _contents_from(messages: Sequence[Message]) -> list[types.Content]:
                             )
                         )
                     ],
-                )
+                ),
             )
     return contents
 
@@ -362,7 +403,13 @@ def _response_from(
         if candidate.content and candidate.content.parts:
             for index, part in enumerate(candidate.content.parts):
                 if part.function_call is not None:
-                    tool_calls.append(_tool_call_from_call(part.function_call, index))
+                    tool_calls.append(
+                        _tool_call_from_call(
+                            part.function_call,
+                            index,
+                            part.thought_signature,
+                        )
+                    )
                 elif part.text and not part.thought:
                     text_parts.append(part.text)
         if candidate.finish_reason is not None:
@@ -409,6 +456,23 @@ class GeminiClient:
         if self._client is None:
             self._client = _create_client(self._settings, self._api_key)
         return self._client
+
+    async def verify(self) -> None:
+        """Check that the configured credentials can reach the API.
+
+        Lists a single model instead of generating content, so verification is
+        cheap and does not consume output tokens.
+
+        Raises:
+            LLMError: if the request fails.
+        """
+        try:
+            async with asyncio.timeout(self._timeout_seconds()):
+                await self._sdk_client().aio.models.list(
+                    config=cast("Any", {"page_size": 1}),
+                )
+        except Exception as exc:
+            raise _to_llm_error(exc) from exc
 
     def _retry_policy(self) -> RetryPolicy:
         return RetryPolicy(max_attempts=max(1, self._settings.retry_attempts))
@@ -473,13 +537,13 @@ class GeminiClient:
         the registry is tried exactly once.
 
         Raises:
-            UnknownModelError: if the configured model is not registered.
+            UnknownModelError: if the configured model name is empty or malformed.
             LLMError: if every attempt fails.
         """
         contents = _contents_from(messages)
         config = self._build_config(system_instruction, tools)
         policy = self._retry_policy()
-        current = get_model(self._settings.model)
+        current = resolve_model(self._settings.model)
 
         while True:
             attempts = 0
@@ -530,6 +594,8 @@ class GeminiClient:
             return None
         if status_code(exc) not in _FALLBACK_STATUS_CODES:
             return None
+        if current.fallback is None:
+            return None
         return get_fallback(current.name)
 
     async def generate_stream(
@@ -545,9 +611,9 @@ class GeminiClient:
         it would duplicate text already shown to the user.
 
         Raises:
-            UnknownModelError: if the configured model is not registered.
+            UnknownModelError: if the configured model name is empty or malformed.
         """
-        model_name = get_model(self._settings.model).name
+        model_name = resolve_model(self._settings.model).name
         contents = _contents_from(messages)
         config = self._build_config(system_instruction, tools)
         accumulator = ToolCallAccumulator()
@@ -571,6 +637,9 @@ class GeminiClient:
             remaining = accumulator.flush()
             if remaining is not None:
                 yield StreamEvent("tool_call_delta", data=remaining)
+        except asyncio.CancelledError:
+            status = "cancelled"
+            raise
         except Exception as exc:
             status = _call_status(exc)
             yield StreamEvent(
@@ -601,7 +670,10 @@ class GeminiClient:
             if candidate.content and candidate.content.parts:
                 for part in candidate.content.parts:
                     if part.function_call is not None:
-                        completed = accumulator.feed(part.function_call)
+                        completed = accumulator.feed(
+                            part.function_call,
+                            thought_signature=part.thought_signature,
+                        )
                         if completed is not None:
                             yield StreamEvent("tool_call_delta", data=completed)
                     elif part.text:

@@ -6,6 +6,7 @@ import pytest
 
 from gemini_cli.config.defaults import (
     AVAILABLE_ROLES,
+    AVAILABLE_THEMES,
     DEFAULT_ALLOWED_EXTENSIONS,
     DEFAULT_MAX_AGENT_ITERATIONS,
     DEFAULT_MAX_FILE_SIZE_BYTES,
@@ -19,6 +20,7 @@ from gemini_cli.config.defaults import (
     DEFAULT_SHELL_MAX_OUTPUT_BYTES,
     DEFAULT_SHELL_TIMEOUT_SECONDS,
     DEFAULT_TELEMETRY_ENABLED,
+    DEFAULT_THEME_NAME,
     GLOBAL_CONFIG_DIR_NAME,
     GLOBAL_CONFIG_FILE_NAME,
     PROJECT_CONFIG_FILE_NAME,
@@ -78,6 +80,15 @@ def test_roles_are_valid() -> None:
     assert DEFAULT_ROLE in AVAILABLE_ROLES
 
 
+def test_themes_are_valid() -> None:
+    """Themes must be unique, lowercase, and include the default theme."""
+    assert isinstance(AVAILABLE_THEMES, tuple)
+    assert AVAILABLE_THEMES
+    assert len(set(AVAILABLE_THEMES)) == len(AVAILABLE_THEMES)
+    assert all(theme == theme.lower() for theme in AVAILABLE_THEMES)
+    assert DEFAULT_THEME_NAME in AVAILABLE_THEMES
+
+
 def test_instruction_files_are_declared() -> None:
     """Project instruction discovery must include the documented files."""
     assert isinstance(PROJECT_INSTRUCTION_FILES, tuple)
@@ -104,3 +115,4 @@ def test_collections_are_immutable() -> None:
     assert isinstance(DEFAULT_ALLOWED_EXTENSIONS, tuple)
     assert isinstance(PROJECT_INSTRUCTION_FILES, tuple)
     assert isinstance(AVAILABLE_ROLES, tuple)
+    assert isinstance(AVAILABLE_THEMES, tuple)

@@ -61,6 +61,8 @@ gemini_cli/
 │       ├── cli/
 │       │   ├── __init__.py
 │       │   ├── app.py
+│       │   ├── command_arguments.py
+│       │   ├── slash_commands.py
 │       │   ├── commands/
 │       │   │   ├── chat.py
 │       │   │   ├── run.py
@@ -69,8 +71,13 @@ gemini_cli/
 │       │   │   └── config.py
 │       │   └── tui/
 │       │       ├── __init__.py
+│       │       ├── activity.py
+│       │       ├── app.py
+│       │       ├── clipboard.py
+│       │       ├── markdown.py
 │       │       ├── repl.py
-│       │       └── themes.py
+│       │       ├── themes.py
+│       │       └── widgets.py
 │       ├── core/
 │       │   ├── __init__.py
 │       │   ├── agent.py
@@ -113,6 +120,7 @@ gemini_cli/
 │       ├── config/
 │       │   ├── __init__.py
 │       │   ├── settings.py
+│       │   ├── env_file.py
 │       │   ├── project_context.py
 │       │   └── defaults.py
 │       └── telemetry/
@@ -144,19 +152,99 @@ as production usage.
 ### Application entry points and CLI
 
 `gemini_cli.__main__` is the module entry point for `python -m
-gemini_cli`. It should contain minimal bootstrapping and delegate command
+gemini_cli`. It contains minimal bootstrapping and delegates command
 registration and argument parsing to `cli/app.py`.
 
 The `cli` package is an adapter between users and the application core:
 
+- `app.py` registers commands and turns expected failures into exit codes;
+- `runtime.py` builds the agent runtime lazily — it resolves the API key,
+  loads project context, registers the built-in tools, selects the sandbox
+  backend, and assembles the agent;
+- `waiting.py` derives the model-wait state from agent events and provides the
+  Rich spinner used by `run` and the line fallback;
+- `slash_commands.py` is the single registry for interactive slash commands:
+  it declares canonical names, aliases, descriptions, argument metadata, and
+  TUI-only markers, then parses case-insensitive input and resolves exact
+  names, aliases, or unique prefixes. Ambiguous prefixes and misspellings
+  produce a safe suggestion instead of executing a command;
+- `command_arguments.py` validates `/model`, `/role`, and `/theme` arguments.
+  Models must be registered; roles and themes must match the configured
+  choices, and close misspellings receive a `Did you mean ...?` suggestion;
 - `commands/chat.py` starts an interactive conversation;
 - `commands/run.py` performs a single non-interactive request and is suitable
   for scripts and CI jobs;
-- `commands/auth.py` manages login, logout, and OAuth flows;
-- `commands/mcp.py` manages configured MCP servers;
+- `commands/auth.py` manages login, logout, and status;
 - `commands/config.py` reads and updates user-facing configuration;
-- `tui/repl.py` renders the interactive Rich or Textual interface, while
-  `tui/themes.py` keeps presentation settings separate from behavior.
+- `commands/mcp.py` will manage configured MCP servers in Phase 9;
+- `tui/app.py` is the full-screen Textual application: ASCII wordmark, status
+  bar, scrollable conversation, prompt, context panel, and role footer;
+- `tui/activity.py` renders inline collapsible activity lines with thoughts,
+  tool calls, web fetches, statuses, and bounded output previews;
+- `tui/markdown.py` renders user and assistant messages with the Textual GFM
+  parser, sanitizes control sequences, adds inline `<u>`, and keeps links
+  non-clickable;
+- `tui/clipboard.py` copies code blocks and finished mouse selections through
+  native desktop helpers and saves a private fallback file when neither a
+  helper nor OSC 52 is available;
+- `tui/widgets.py` contains the logo, status bar, message view, context panel,
+  approval modal, and selection menu;
+- `tui/repl.py` is the plain line fallback for pipes, CI, and `--no-tui`;
+- `tui/themes.py` keeps the dark and light palettes separate from behavior and
+  derives the Textual themes used by Markdown blocks. The app CSS uses Textual
+  theme variables (`$background`, `$surface`, `$primary`, `$text`) so modal
+  screens follow the active palette; message widgets expose `apply_theme()` to
+  refresh speaker prefixes, hints, and errors after a theme change.
+
+The TUI streams agent events into the conversation, opens a modal confirmation
+for sensitive tool calls, and uses modal menus for role, model, and
+authentication selection. Model and role changes rebuild the runtime and are
+written atomically to the project `.env` file, so the next session starts with
+the same choice. The TUI treats only slash-prefixed input as a command; other
+text is sent to the agent. A non-TTY environment falls back to line mode.
+
+User and assistant messages are parsed as Markdown after the speaker prefix,
+which stays separate so a user turn is not bold as a whole. Streaming reuses
+`Markdown.get_stream()` and a final `update()` ensures a partially received
+fence or emphasis run is rendered correctly. Inline `<u>` is supported through
+a small block mixin on top of the upstream GFM parser; raw HTML is not
+executed, and links are styled but never opened automatically. Fenced code
+blocks carry a `copy` button in their toolbar that copies the block contents
+to the terminal clipboard. Releasing a mouse selection anywhere in the TUI
+also copies the selected text automatically and confirms it with a short
+notification, using the same helper-first clipboard chain.
+
+Thoughts and tool calls are rendered as inline collapsible lines inside the
+assistant message, between the text segments the model streams. Activity text
+is muted so it stays secondary to the answer, with a leading type emoji and a
+status emoji (`⏳`, `✅`, `❌`, `🚫`, `⏹️`). A thought line shows its duration
+(`🧠 thought • 11.3s ✅`); a tool line summarizes the action
+(`🌐 search: https://…`, `📝 create notes.md`, `💻 run: ls -la`). Expanding a
+line shows the thought text, tool arguments, status, duration, and a bounded
+preview of command output. Errors and denied actions use the theme error color
+and a bold title; stopped activity stays muted. Activity is presentation-only:
+it is not added to the session history or sent back to the model. Long output
+is sanitized and truncated, with the number of hidden lines shown.
+
+`run`, the line fallback, and the TUI all show an animated waiting indicator
+while the agent is awaiting a model response. The indicator is driven by the
+agent's event stream: it disappears as soon as a response chunk arrives, and it
+is suppressed while a tool call is in flight, so it never overlaps streamed text
+or tool execution. The CLI variants write to `stderr` and stay disabled when
+that stream is not a terminal.
+
+While a turn is active, the prompt placeholder explains how to stop, for
+example `Gemini is responding — press Esc to stop`; during tool execution it
+changes to a message about stopping after the running tools finish. Escape
+cancels the current model stream immediately. During tool execution it records
+the request and stops after the current tool batch, before the next model
+request. The partial assistant text is kept in the session, the input is
+re-enabled, and the context status is refreshed. Cancelled streams are reported
+to telemetry with the `cancelled` status.
+
+Commands that do not need the agent — help, version, auth, and config — never
+resolve credentials. The one-shot `run` command uses no approval callback, so
+destructive tools stay denied outside the interactive UI.
 
 CLI modules should validate and normalize input, call application services,
 and format output. They should not implement agent reasoning, credential
@@ -174,8 +262,8 @@ The `core` package owns model-independent orchestration and never imports the
 2. Fit the history to the model window, export tool declarations, and stream a
    response.
 3. Emit text and thinking events as they arrive and buffer complete tool calls.
-4. Record the assistant turn, usage, and quota consumption, then check the
-   iteration limit.
+4. Record the assistant turn and usage, refresh the context-window status,
+   then check the iteration limit.
 5. For each tool call, check approval, dispatch through the registry, and add
    exactly one observation — including denied, unknown, and failed calls.
 6. Repeat until the model answers without tool calls or the limit is reached.
@@ -192,10 +280,14 @@ indivisible groups first. It never separates an assistant tool call from its
 observations, never removes the most recent messages, and keeps the history
 starting with a user turn.
 
-`core/quota_tracker.py` records reported usage in `~/.gemini-cli/quota.json`
-using an atomic, private write and reports rolling five-hour and seven-day
-windows. The limits are local policy derived from published free-tier
-averages, not a provider guarantee.
+`core/context_tracker.py` derives how much of the active model's context
+window a conversation occupies. The estimate reuses the same token heuristic
+as `ContextManager` (system prompt, tool declarations, and the fitted
+history), and the percentage is measured against the input budget
+`context_window - max_output_tokens`. The status is a view of one session, not
+persisted state: `/clear`, a model change, or a future restored session
+recomputes it from the conversation history. No quota file is written, and the
+provider is not assumed to expose a remaining-token endpoint.
 
 `core/streaming.py` defines the stable `AgentEvent` contract. Both the
 interactive TUI and non-interactive command can consume these events without
@@ -207,8 +299,11 @@ The `llm` package isolates all Gemini-specific behavior:
 
 - `client.py` wraps the `google-genai` SDK and maps SDK request and response
   types to internal application models;
-- `models.py` defines supported models and controlled fallback behavior, such
-  as switching from a Pro model to Flash when policy allows it;
+- `models.py` defines supported Gemini and Gemma models and controlled fallback
+  behavior, such as switching from a Pro model to Flash when policy allows it.
+  `resolve_model()` accepts a well-formed but unregistered name as a custom
+  model with generic metadata and no fallback, while `get_model()` remains
+  strict for internal registry lookups;
 - `retry.py` applies bounded exponential backoff to transient failures and
   rate limits;
 - `prompts/system.py` composes trusted system instructions;
@@ -223,6 +318,13 @@ Streaming yields text deltas as they arrive, but tool calls are buffered until
 their arguments are complete so partial JSON never reaches tool dispatch.
 `generate()` retries transient failures and then tries the registry fallback
 once; a stream is never replayed, because that would duplicate emitted text.
+
+Gemini 3 function-call parts can carry an opaque `thought_signature`.
+`ToolCallRequest` stores it outside `repr` and `_contents_from()` puts it back
+on the matching `Part` unchanged; signatures are never logged, and unsigned
+parallel sibling calls remain unsigned. Adjacent same-role contents are merged,
+so several parallel function responses travel as one `user` turn and the
+provider's required user/model alternation is preserved.
 
 ### Tool system
 
@@ -295,9 +397,14 @@ from leaking into model requests.
 
 The `config` package owns typed configuration and instruction discovery:
 
-- `defaults.py` contains safe built-in defaults;
+- `defaults.py` contains safe built-in defaults, including available roles and
+  terminal themes;
 - `settings.py` loads and validates settings with the precedence `environment
-  variables > project configuration > global configuration > defaults`;
+  variables > project configuration > global configuration > defaults`, and
+  validates `theme` against the registered `dark`/`light` palettes;
+- `env_file.py` updates one dotenv key atomically, preserving comments and
+  unrelated entries; the TUI uses it for `GEMINI_MODEL`, `GEMINI_ROLE`, and
+  `GEMINI_THEME`;
 - `project_context.py` discovers and reads project instructions such as
   `GEMINI.md` and `AGENTS.md`.
 

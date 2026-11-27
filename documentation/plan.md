@@ -351,7 +351,7 @@ mypy_path = "src"
 GEMINI_API_KEY=your-api-key-here
 
 # Optional runtime settings.
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.8-flash
 GEMINI_REQUEST_TIMEOUT_MS=60000
 GEMINI_RETRY_ATTEMPTS=3
 GEMINI_MAX_HISTORY_TURNS=20
@@ -469,7 +469,7 @@ Define all built-in defaults as typed constants:
 from __future__ import annotations
 
 # Model defaults
-DEFAULT_MODEL: str = "gemini-2.5-flash"
+DEFAULT_MODEL: str = "gemini-3.8-flash"
 DEFAULT_REQUEST_TIMEOUT_MS: int = 60_000
 DEFAULT_RETRY_ATTEMPTS: int = 3
 
@@ -693,7 +693,7 @@ __all__ = ["ProjectContext", "Settings", "load_project_context"]
 
 - [x] `Settings()` can be constructed with no environment variables set (all
       defaults apply).
-- [x] Setting `GEMINI_MODEL=gemini-2.5-pro` via env correctly overrides the
+- [x] Setting `GEMINI_MODEL=gemini-3.8-flash` via env correctly overrides the
       default.
 - [x] Invalid role value raises `pydantic.ValidationError`.
 - [x] `load_project_context()` returns combined instructions from found files.
@@ -914,10 +914,17 @@ MODEL_REGISTRY: dict[str, ModelInfo] = { ... }
 
 Populate the registry from the UI mockups:
 
-| Model name         | Tier  | Description                                                  |
-| ------------------ | ----- | ------------------------------------------------------------ |
-| `gemini-2.5-flash` | flash | Best for fast, simple tasks (chat, short text, basic code)   |
-| `gemini-2.5-pro`   | pro   | Best for complex reasoning, long documents, multi-step tasks |
+| Model name                  | Tier       | Description                                                     |
+| --------------------------- | ---------- | --------------------------------------------------------------- |
+| `gemini-4-argon`            | pro        | Flagship reasoning for complex engineering, science, and agents. |
+| `gemini-3.8-flash`          | flash      | Most intelligent Flash for long-horizon coding and agents.       |
+| `gemini-3.6-flash`          | flash      | Previous-generation Flash for agentic coding and everyday tasks. |
+| `gemini-3.5-flash-lite`     | flash_lite | Fast, low-cost 3.5 model for high-throughput and subagent tasks. |
+| `gemini-3.1-flash-lite`     | flash_lite | Low-latency 3.1 model for high-frequency lightweight tasks.      |
+| `gemini-3.1-pro-preview`    | pro        | Preview Pro for precise tool use and multi-step workflows.       |
+| `gemini-3-flash-preview`    | flash      | Preview Flash with strong multimodal and agentic coding skills.  |
+| `gemini-2.5-pro` (legacy)   | pro        | Limited API access; prefer Gemini 4 Argon.                       |
+| `gemini-2.5-flash` (legacy) | flash      | Limited API access; prefer Gemini 3.8 Flash.                     |
 
 Include helper functions:
 
@@ -998,12 +1005,14 @@ class Message:
     role: Literal["user", "assistant", "tool"]
     content: str
     tool_call_id: str | None = None
+    tool_calls: tuple[ToolCallRequest, ...] = ()
 
 @dataclass
 class ToolCallRequest:
     id: str
     name: str
     arguments: dict[str, Any]
+    thought_signature: bytes | None = None  # opaque Gemini replay state
 
 @dataclass
 class ModelResponse:
@@ -1037,6 +1046,10 @@ The client is responsible for:
 7. Logging `ModelCallEvent` telemetry.
 8. Applying model fallback when the primary model returns an unrecoverable
    error and a fallback is defined.
+9. Preserving the opaque Gemini 3 `thought_signature` attached to function-call
+   parts and replaying it unchanged on the next request. Parallel function
+   responses are merged into one user turn, because the provider requires
+   alternating user and model turns.
 
 ### 6.4 Streaming Tool Call and Thought Accumulation
 
@@ -1058,6 +1071,14 @@ text, thoughts/reasoning parts, or function calls:
 3. **Usage and Finish Events:** Once the stream closes, token usage metadata
    is captured into `UsageInfo` and emitted as `StreamEvent(event_type="usage")`
    followed by `StreamEvent(event_type="done")`.
+4. **Thought Signature Retention:** Gemini 3 attaches a `thought_signature` to
+   the function-call part, usually in the first chunk. The accumulator keeps it
+   until the call is complete, stores it on `ToolCallRequest`, and the client
+   replays it unchanged on the matching function-call part. Signatures are
+   opaque provider state: they are never logged or modified. Only the parts
+   that were signed are replayed with a signature, so unsigned parallel sibling
+   calls remain unsigned. Parallel tool observations are merged into one user
+   content for the next request.
 
 ### 6.5 System prompt composition — `src/gemini_cli/llm/prompts/system.py`
 
@@ -1106,7 +1127,7 @@ Create Jinja2 templates:
 | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `test_models.py`  | `get_model` returns correct info, unknown model raises error, fallback chain resolves, `list_models` is non-empty.                                                                                                                                                                                          |
 | `test_retry.py`   | Retries on 429/500/503 up to max, no retry on 400/401, respects jitter and max delay, final exception is raised after exhaustion.                                                                                                                                                                           |
-| `test_client.py`  | SDK `generate_content` is called with correctly mapped messages and tools, response is mapped to `ModelResponse`, streaming yields expected `StreamEvent` sequence, function call chunks are properly accumulated before execution, fallback is triggered on 5xx, API key is never logged. Uses mocked SDK. |
+| `test_client.py`  | SDK `generate_content` is called with correctly mapped messages and tools, response is mapped to `ModelResponse`, streaming yields expected `StreamEvent` sequence, function call chunks are properly accumulated before execution, thought signatures are captured, retained across chunks, and replayed, parallel tool responses are grouped into one user turn, fallback is triggered on 5xx, API key is never logged. Uses mocked SDK. |
 | `test_prompts.py` | `build_system_prompt` renders the correct role template, project instructions are delimited, missing template raises clear error.                                                                                                                                                                           |
 
 ### 6.8 Acceptance criteria
@@ -1115,6 +1136,8 @@ Create Jinja2 templates:
 - [x] `generate()` with a mocked SDK returns a valid `ModelResponse`.
 - [x] `generate_stream()` with a mocked SDK yields `text_delta` then `done`.
 - [x] `generate_stream()` properly buffers multi-chunk tool calls into a valid `ToolCallRequest`.
+- [x] `thought_signature` returned with a function call is captured, retained across streamed chunks, and replayed unchanged.
+- [x] Parallel tool responses are merged into a single user turn.
 - [x] Retry logic stops after `max_attempts`.
 - [x] Fallback switches to the fallback model on supported errors.
 - [x] System prompt renders differently for each role.
@@ -1868,27 +1891,33 @@ def chat(
 def run(
     prompt: str = typer.Argument(..., help="The task to execute."),
     model: str = typer.Option(None),
+    role: str = typer.Option(None),
 ) -> None:
     """Execute a single prompt and print the result."""
-    # Creates a session, runs agent.run(), prints final text, exits.
+    # Creates a session, streams agent events, prints text, exits non-zero on
+    # an agent error. No approval callback: destructive tools stay denied.
 ```
 
 ### 10.4 Auth commands — `src/gemini_cli/cli/commands/auth.py`
 
-| Command                     | Behavior                                                           |
-| --------------------------- | ------------------------------------------------------------------ |
-| `gemini-cli-py login`       | Prompt for API key, store in keyring, verify with a test API call. |
-| `gemini-cli-py logout`      | Remove stored credentials from keyring.                            |
-| `gemini-cli-py auth status` | Show authentication method and validity.                           |
+| Command                     | Behavior                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| `gemini-cli-py login`       | Prompt for API key, store in keyring, verify with a test API call. `--no-verify` skips the check. |
+| `gemini-cli-py logout`      | Remove stored credentials from keyring.                                        |
+| `gemini-cli-py auth status` | Show authentication method and validity.                                       |
 
 ### 10.5 Config commands — `src/gemini_cli/cli/commands/config.py`
 
-| Command                                  | Behavior                                      |
-| ---------------------------------------- | --------------------------------------------- |
-| `gemini-cli-py config show`              | Print all resolved settings (redact API key). |
-| `gemini-cli-py config set <key> <value>` | Write to project or global config file.       |
+| Command                                  | Behavior                                                        |
+| ---------------------------------------- | --------------------------------------------------------------- |
+| `gemini-cli-py config show`              | Print all resolved settings (redact API key).                   |
+| `gemini-cli-py config set <key> <value>` | Write to the project config, or the global config with `--global`. |
 
 ### 10.6 TUI / REPL — `src/gemini_cli/cli/tui/repl.py`
+
+> The shipped interface is the full-screen Textual application described in
+> **10.10**. This section documents the first line-oriented iteration, which
+> remains available as the `--no-tui` fallback.
 
 The terminal interface combines **`prompt_toolkit`** (for rich input, keybindings,
 autocompletion, and arrow-driven selection menus) with **`Rich`** (for visual
@@ -1913,7 +1942,7 @@ styling, markdown rendering, headers, borders, and progress bars).
 4. **Quota Panel Integration:**
    Fed by `QuotaTracker` (Phase 7):
    - Reads 5-hour window token usage and remaining duration.
-   - Reads weekly rolling usage and Monday 09:00 reset timer.
+   - Reads weekly rolling usage and the time until the oldest record leaves the window.
    - Renders progress bars matching `Terminal-3.png`.
 
 Based on the UI mockups, the REPL should display:
@@ -1922,7 +1951,7 @@ Based on the UI mockups, the REPL should display:
 
 ```
 GEMINI CLI
->_  version: v0.1.0    model: gemini-2.5-flash    quota: 100k/200k tokens
+>_  version: v0.1.0    model: gemini-3.8-flash    quota: 100k/200k tokens
 ```
 
 **Conversation area:**
@@ -1983,7 +2012,7 @@ Authentication methods:
 ```
 ═ QUOTA ═════════════════════════════════════════
   5h limit   ██████████░░░░░  72%   1h 24m remaining
-  Weekly     ████░░░░░░░░░░░  31%   resets Mon, 09:00
+  Weekly     ████░░░░░░░░░░░  31%   3d 00h remaining
 ```
 
 ### 10.7 Themes — `src/gemini_cli/cli/tui/themes.py`
@@ -2029,15 +2058,48 @@ DEFAULT_THEME = Theme(
 
 ### 10.9 Acceptance criteria
 
-- [ ] `gemini-cli-py chat` launches the REPL and displays the header.
-- [ ] `gemini-cli-py run "hello"` executes one prompt and exits.
-- [ ] `gemini-cli-py login` prompts for an API key and stores it.
-- [ ] `gemini-cli-py config show` prints all settings with the API key redacted.
-- [ ] Slash commands trigger the expected UI flow with prompt autocompletion.
-- [ ] The REPL displays streaming text character by character via Rich console.
-- [ ] Role, model, and auth selection prompts allow Up/Down arrow navigation and Escape cancellation.
-- [ ] `/quota` panel renders live percentages and timers calculated by `QuotaTracker`.
-- [ ] All tests pass: `uv run pytest tests/unit/cli/`.
+- [x] `gemini-cli-py chat` launches the REPL and displays the header.
+- [x] `gemini-cli-py run "hello"` executes one prompt and exits.
+- [x] `gemini-cli-py login` prompts for an API key and stores it.
+- [x] `gemini-cli-py config show` prints all settings with the API key redacted.
+- [x] Slash commands trigger the expected UI flow with prompt autocompletion.
+- [x] The REPL displays streaming text character by character via Rich console.
+- [x] Role, model, and auth selection prompts allow Up/Down arrow navigation and Escape cancellation.
+- [x] `/quota` panel renders live percentages and timers calculated by `QuotaTracker`.
+- [x] All tests pass: `uv run pytest tests/unit/cli/`.
+
+### 10.10 Full-screen Textual TUI — `src/gemini_cli/cli/tui/app.py`
+
+The primary terminal interface is a full-screen **Textual** application that
+implements the mockups in `documentation/ui/model/`:
+
+- ASCII `GEMINI CLI` wordmark, bordered status bar with version, model, and
+  quota, scrollable conversation with `User:` / `✦:` prefixes, bordered input,
+  and a role footer;
+- streaming assistant text, red errors, and a modal `ApprovalScreen` for
+  sensitive tool calls;
+- a modal `MenuScreen` for `/role`, `/model`, and `/auth` with arrow
+  navigation and Escape cancellation;
+- `/help`, `/clear`, `/quota`, `/theme`, `/reset`, `/exit`, and `/quit`;
+- a `QuotaPanel` with colored five-hour and weekly bars;
+- dark and light palettes switched at runtime with `/theme`.
+
+`chat` launches the TUI on an interactive terminal. `--no-tui`, pipes, and CI
+use the plain line fallback in `tui/repl.py`, which keeps text streaming and
+the commands that do not need a menu.
+
+Tests: `tests/unit/cli/test_repl.py` drives the app with Textual's
+`run_test()` pilot; `tests/unit/cli/test_slash_commands.py` covers parsing and
+line-mode dispatch.
+
+- [x] `chat` opens the full-screen UI on a terminal and falls back to lines
+  without one.
+- [x] The logo, status bar, conversation, input, and footer match the mockups.
+- [x] Assistant text streams into the conversation and errors are red.
+- [x] Sensitive tools open a modal Approve/Deny screen.
+- [x] Role, model, and auth menus navigate with arrows and cancel with Escape.
+- [x] `/quota` shows colored bars; `/theme` switches dark and light.
+- [x] All tests pass: `uv run pytest tests/unit/cli/`.
 
 ---
 

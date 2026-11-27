@@ -7,11 +7,7 @@ from gemini_cli.core.context_manager import (
     estimate_messages,
     estimate_tokens,
 )
-from gemini_cli.core.quota_tracker import (
-    QuotaTracker,
-    QuotaWindowStatus,
-    UsageRecord,
-)
+from gemini_cli.core.context_tracker import ContextWindowStatus, ContextWindowTracker
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import (
     AgentEvent,
@@ -28,10 +24,9 @@ __all__ = [
     "AgentEventType",
     "ChatClient",
     "ContextManager",
-    "QuotaTracker",
-    "QuotaWindowStatus",
+    "ContextWindowStatus",
+    "ContextWindowTracker",
     "Session",
-    "UsageRecord",
     "done_event",
     "error_event",
     "estimate_message_tokens",

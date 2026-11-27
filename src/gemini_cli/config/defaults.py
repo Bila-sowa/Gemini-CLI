@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 # Model defaults
-DEFAULT_MODEL: str = "gemini-2.5-flash"
+DEFAULT_MODEL: str = "gemini-3.8-flash"
 DEFAULT_REQUEST_TIMEOUT_MS: int = 60_000
 DEFAULT_RETRY_ATTEMPTS: int = 3
 
@@ -12,13 +12,6 @@ DEFAULT_MAX_HISTORY_TURNS: int = 20
 DEFAULT_MAX_INPUT_CHARS: int = 32_000
 DEFAULT_MAX_AGENT_ITERATIONS: int = 25
 DEFAULT_MAX_OUTPUT_TOKENS: int = 8_192
-
-# Local quota accounting. The provider does not publish token limits for these
-# windows, so these are averages derived from the free tier (roughly 250k input
-# tokens per minute and 250 requests per day on Gemini 2.5 Flash, about 4k
-# tokens per request). They are policy defaults, not provider guarantees.
-DEFAULT_QUOTA_5H_TOKEN_LIMIT: int = 200_000
-DEFAULT_QUOTA_WEEKLY_TOKEN_LIMIT: int = 1_000_000
 
 # Filesystem safety
 DEFAULT_ALLOWED_EXTENSIONS: tuple[str, ...] = (
@@ -63,6 +56,10 @@ AVAILABLE_ROLES: tuple[str, ...] = (
     "analyser",
     "poet",
 )
+
+# Terminal themes
+DEFAULT_THEME_NAME: str = "dark"
+AVAILABLE_THEMES: tuple[str, ...] = ("dark", "light")
 
 # Config file paths
 GLOBAL_CONFIG_DIR_NAME: str = ".gemini-cli"

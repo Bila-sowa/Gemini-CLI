@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import asyncio
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
+
+import pytest
 
 from gemini_cli.config import Settings
 from gemini_cli.core.agent import Agent
-from gemini_cli.core.context_manager import ContextManager
-from gemini_cli.core.quota_tracker import QuotaTracker
+from gemini_cli.core.context_manager import (
+    ContextManager,
+    estimate_messages,
+    estimate_tokens,
+)
+from gemini_cli.core.context_tracker import ContextWindowTracker
 from gemini_cli.core.session import Session
 from gemini_cli.core.streaming import AgentEvent, AgentEventType
 from gemini_cli.llm import LLMError, Message, StreamEvent, ToolCallRequest
@@ -36,7 +42,7 @@ class Harness:
     agent: Agent
     session: Session
     client: FakeLLMClient
-    quota: QuotaTracker
+    context_window: ContextWindowTracker
     registry: ToolRegistry
 
 
@@ -60,19 +66,14 @@ def build_harness(
     for tool in tools:
         registry.register(tool)
 
-    quota = QuotaTracker(
-        tmp_path / "quota.json",
-        five_hour_limit=10_000,
-        weekly_limit=100_000,
-        now=lambda: datetime(2026, 1, 5, 12, 0, 0),
-    )
+    context_window = ContextWindowTracker(window_tokens=50_000)
     client = FakeLLMClient(responses)
     agent = Agent(
         client,
         registry,
         approval if approval is not None else ApprovalManager(),
         ContextManager(50_000),
-        quota,
+        context_window,
         settings,
         SYSTEM_PROMPT,
     )
@@ -80,7 +81,7 @@ def build_harness(
         agent=agent,
         session=Session(model="gemini-2.5-flash"),
         client=client,
-        quota=quota,
+        context_window=context_window,
         registry=registry,
     )
 
@@ -97,8 +98,15 @@ def make_call(
     call_id: str = "call_1",
     name: str = "fake_tool",
     value: str = "x",
+    *,
+    thought_signature: bytes | None = None,
 ) -> ToolCallRequest:
-    return ToolCallRequest(id=call_id, name=name, arguments={"value": value})
+    return ToolCallRequest(
+        id=call_id,
+        name=name,
+        arguments={"value": value},
+        thought_signature=thought_signature,
+    )
 
 
 async def test_text_only_turn(tmp_path: Path) -> None:
@@ -116,7 +124,13 @@ async def test_text_only_turn(tmp_path: Path) -> None:
     assert harness.session.total_input_tokens == 10
     assert harness.session.total_output_tokens == 5
     assert harness.session.iteration_count == 1
-    assert harness.quota.get_5h_status().used_tokens == 15
+    expected = estimate_tokens(SYSTEM_PROMPT) + estimate_messages(
+        harness.session.get_history()
+    )
+    status = harness.context_window.status()
+    assert status.used_tokens == expected
+    assert status.budget_tokens == 50_000
+    assert status.trimmed is False
 
 
 async def test_request_shape(tmp_path: Path) -> None:
@@ -176,7 +190,29 @@ async def test_tool_call_round_trip(tmp_path: Path) -> None:
     assert len(harness.client.calls[1]["messages"]) == 3
     assert harness.session.total_input_tokens == 20
     assert harness.session.total_output_tokens == 10
-    assert harness.quota.get_5h_status().used_tokens == 30
+    status = harness.context_window.status()
+    assert status.used_tokens >= (
+        estimate_tokens(SYSTEM_PROMPT)
+        + estimate_messages(harness.session.get_history())
+    )
+    assert status.used_tokens <= status.budget_tokens
+
+
+async def test_tool_signature_is_replayed_to_the_next_request(tmp_path: Path) -> None:
+    tool = FakeTool()
+    signature = b"opaque-thought-signature"
+    call = make_call(thought_signature=signature)
+    harness = build_harness(
+        tmp_path,
+        [tool_call_response([call]), text_response("All done")],
+        tools=[tool],
+    )
+
+    await collect(harness)
+
+    replayed = harness.client.calls[1]["messages"][1]
+    assert replayed.role == "assistant"
+    assert replayed.tool_calls[0].thought_signature == signature
 
 
 async def test_multiple_tool_calls_in_one_turn(tmp_path: Path) -> None:
@@ -431,3 +467,84 @@ async def test_done_is_emitted_exactly_once(tmp_path: Path) -> None:
     events = await collect(harness)
 
     assert event_types(events).count(AgentEventType.DONE) == 1
+
+
+async def test_context_status_is_recomputed_after_a_session_restore(
+    tmp_path: Path,
+) -> None:
+    harness = build_harness(tmp_path, [text_response("Hello")])
+    await collect(harness)
+    before = harness.context_window.status()
+
+    restored = Session(model="gemini-2.5-flash")
+    restored.messages = list(harness.session.get_history())
+    harness.agent.refresh_context(restored)
+
+    after = harness.context_window.status()
+    assert after.used_tokens == before.used_tokens
+    assert after.percentage == before.percentage
+    assert after.trimmed == before.trimmed
+
+
+async def test_cancelled_stream_keeps_partial_assistant_text(
+    tmp_path: Path,
+) -> None:
+    class BlockingClient:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.closed = asyncio.Event()
+
+        async def generate_stream(
+            self,
+            messages: Sequence[Message],
+            tools: Sequence[object] | None = None,
+            system_instruction: str | None = None,
+        ) -> AsyncIterator[StreamEvent]:
+            del messages, tools, system_instruction
+            yield StreamEvent("text_delta", data="partial")
+            self.started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                self.closed.set()
+
+    settings = Settings(_env_file=None, allowed_roots=[tmp_path])
+    client = BlockingClient()
+    agent = Agent(
+        client,  # type: ignore[arg-type]
+        ToolRegistry(),
+        ApprovalManager(),
+        ContextManager(50_000),
+        ContextWindowTracker(50_000),
+        settings,
+        SYSTEM_PROMPT,
+    )
+    session = Session(model="gemini-2.5-flash")
+
+    async def consume() -> None:
+        async for _event in agent.run(session, "hello"):
+            pass
+
+    task = asyncio.create_task(consume())
+    await client.started.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert client.closed.is_set()
+    assert [message.role for message in session.messages] == ["user", "assistant"]
+    assert session.messages[1].content == "partial"
+
+
+def test_interrupted_tool_turn_gets_an_assistant_marker() -> None:
+    call = ToolCallRequest(id="call_1", name="fake_tool", arguments={})
+    session = Session(model="gemini-2.5-flash")
+    session.add_user_message("hello")
+    session.add_assistant_message(tool_calls=(call,))
+    session.add_tool_result("call_1", ToolResult(success=True, output="ok"))
+
+    Agent._record_interrupted_turn(session, [], True)
+
+    assert session.last_message() is not None
+    assert session.last_message().content == "[generation stopped]"
